@@ -1,0 +1,9 @@
+Keyword not supported: 'allowloadlocalinfile'.   at Microsoft.Data.Common.DbConnectionOptions..ctor(String connectionString, Dictionary`2 synonyms)
+   at Microsoft.Data.SqlClient.SqlConnectionString..ctor(String connectionString)
+   at Microsoft.Data.ProviderBase.DbConnectionFactory.GetConnectionPoolGroup(DbConnectionPoolKey key, DbConnectionPoolGroupOptions poolOptions, DbConnectionOptions& userConnectionOptions)
+   at Microsoft.Data.SqlClient.SqlConnection.set_ConnectionString(String value)
+   at VOL.Core.DBManager.DBServerProvider.GetDbConnection(String connString) in D:\SourceAPS\vol.api\VOL.Core\DBManager\DBServerProvider.cs:line 86
+   at VOL.Core.DBManager.DBServerProvider.GetDbConnection(String connString, DbCurrentType dbCurrentType) in D:\SourceAPS\vol.api\VOL.Core\DBManager\DBServerProvider.cs:line 101
+   at VOL.Core.Dapper.SqlDapper.MSSqlBulkInsert(DataTable table, String tableName, SqlBulkCopyOptions sqlBulkCopyOptions, String dbKeyName) in D:\SourceAPS\vol.api\VOL.Core\Dapper\SqlDapper.cs:line 691
+   at VOL.Core.Dapper.SqlDapper.BulkInsert(DataTable table, String tableName, Nullable`1 sqlBulkCopyOptions, String fileName, String tmpPath) in D:\SourceAPS\vol.api\VOL.Core\Dapper\SqlDapper.cs:line 746
+   at VOL.Core.Services.Logger.Start() in D:\SourceAPS\vol.api\VOL.Core\Services\Logger.cs:line 186Microsoft.Data.SqlClient
