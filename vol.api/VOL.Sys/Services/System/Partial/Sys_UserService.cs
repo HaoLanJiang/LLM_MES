@@ -40,17 +40,17 @@ namespace VOL.Sys.Services
         {
             string msg = string.Empty;
             //   2020.06.12增加验证码
-            IMemoryCache memoryCache = _context.GetService<IMemoryCache>();
-            string cacheCode = (memoryCache.Get(loginInfo.UUID) ?? "").ToString();
-            if (string.IsNullOrEmpty(cacheCode))
-            {
-                return webResponse.Error("验证码已失效");
-            }
-            if (cacheCode.ToLower() != loginInfo.VerificationCode.ToLower())
-            {
-                memoryCache.Remove(loginInfo.UUID);
-                return webResponse.Error("验证码不正确");
-            }
+            //IMemoryCache memoryCache = _context.GetService<IMemoryCache>();
+            //string cacheCode = (memoryCache.Get(loginInfo.UUID) ?? "").ToString();
+            //if (string.IsNullOrEmpty(cacheCode))
+            //{
+            //    return webResponse.Error("验证码已失效");
+            //}
+            //if (cacheCode.ToLower() != loginInfo.VerificationCode.ToLower())
+            //{
+            //    memoryCache.Remove(loginInfo.UUID);
+            //    return webResponse.Error("验证码不正确");
+            //}
             try
             {
                 Sys_User user = await repository.FindAsIQueryable(x => x.UserName == loginInfo.UserName)
@@ -85,7 +85,7 @@ namespace VOL.Sys.Services
             }
             finally
             {
-                memoryCache.Remove(loginInfo.UUID);
+                //memoryCache.Remove(loginInfo.UUID);
                 Logger.Info(LoggerType.Login, loginInfo.Serialize(), webResponse.Message, msg);
             }
         }

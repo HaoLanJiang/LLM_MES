@@ -149,9 +149,11 @@ builder.Services.Configure<FormOptions>(x =>
 var app = builder.Build();
 
 //正式环境如果要关闭swgger,请注释下面三行代码
-//app.UseDeveloperExceptionPage();
-//app.UseSwagger();
-//app.UseSwaggerUI();
+#if DEBUG
+app.UseDeveloperExceptionPage();
+app.UseSwagger();
+app.UseSwaggerUI();
+#endif
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
