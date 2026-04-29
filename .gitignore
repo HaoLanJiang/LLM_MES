@@ -107,3 +107,4 @@
 /vol.api/VOL.WebApi/obj
 /vol.api/VOL.WebApi/bin
 /vol.api.sqlsugar/.vs
+/vol.api/VOL.LLM/obj/Debug/net8.0
