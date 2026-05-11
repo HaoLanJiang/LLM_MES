@@ -110,3 +110,5 @@
 /vol.api/VOL.LLM/obj/Debug/net8.0
 /vol.api/VOL.WebApi/Download/Logger/Queue/WriteError
 /vol.api/VOL.LLM/bin/Debug/net8.0
+/vol.api/VOL.APS/bin/Debug/net8.0
+/vol.api/VOL.APS/obj
