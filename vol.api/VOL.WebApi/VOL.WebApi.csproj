@@ -35,6 +35,7 @@
 
 
   <ItemGroup>
+    <ProjectReference Include="..\VOL.APS\VOL.APS.csproj" />
     <ProjectReference Include="..\VOL.Builder\VOL.Builder.csproj" />
     <ProjectReference Include="..\VOL.Core\VOL.Core.csproj" />
     <ProjectReference Include="..\VOL.Entity\VOL.Entity.csproj" />

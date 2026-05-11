@@ -214,9 +214,17 @@ let viewgird = [
     {
         path: '/llm_conversation_details',
         name: 'llm_conversation_details',
-        component: () => import('@/views/llm/llm/llm_conversatio/llm_conversatio.vue')
+        component: () => import('@/views/llm/llm_conversation_details/llm_conversation_details.vue')
     }
-]
+    ,{
+        path: '/aps_work_order',
+        name: 'aps_work_order',
+        component: () => import('@/views/aps/aps_work_order/aps_work_order.vue')
+    }    ,{
+        path: '/aps_machine',
+        name: 'aps_machine',
+        component: () => import('@/views/aps/aps_machine/aps_machine.vue')
+    }]
 
 //上面的demo、MES开头的都是示例菜单，可以任意删除 
 export default viewgird
