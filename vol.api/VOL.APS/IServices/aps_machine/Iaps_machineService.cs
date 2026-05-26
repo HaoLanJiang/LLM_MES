@@ -6,7 +6,7 @@ using VOL.Entity.DomainModels;
 
 namespace VOL.APS.IServices
 {
-    public partial interface Iaps_machineService : IService<aps_machine>
+    public partial interface IAps_MachineService : IService<Aps_Machine>
     {
     }
 }

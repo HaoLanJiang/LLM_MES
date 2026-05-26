@@ -1,7 +1,7 @@
 /*
  *接口编写处...
 *如果接口需要做Action的权限验证，请在Action上使用属性
-*如: [ApiActionPermission("aps_machine",Enums.ActionPermissionOptions.Search)]
+*如: [ApiActionPermission("Aps_Machine",Enums.ActionPermissionOptions.Search)]
  */
 using Microsoft.AspNetCore.Mvc;
 using System;
@@ -14,14 +14,14 @@ using VOL.APS.IServices;
 
 namespace VOL.APS.Controllers
 {
-    public partial class aps_machineController
+    public partial class Aps_MachineController
     {
-        private readonly Iaps_machineService _service;//访问业务代码
+        private readonly IAps_MachineService _service;//访问业务代码
         private readonly IHttpContextAccessor _httpContextAccessor;
 
         [ActivatorUtilitiesConstructor]
-        public aps_machineController(
-            Iaps_machineService service,
+        public Aps_MachineController(
+            IAps_MachineService service,
             IHttpContextAccessor httpContextAccessor
         )
         : base(service)

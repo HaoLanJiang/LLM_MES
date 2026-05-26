@@ -13,8 +13,8 @@ using VOL.Entity.SystemModels;
 
 namespace VOL.Entity.DomainModels
 {
-    [Entity(TableCnName = "APS设备表",TableName = "aps_machine")]
-    public partial class aps_machine:BaseEntity
+    [Entity(TableCnName = "APS设备表",TableName = "Aps_Machine")]
+    public partial class Aps_Machine:BaseEntity
     {
         /// <summary>
        ///

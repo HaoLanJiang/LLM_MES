@@ -19,6 +19,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VOL.LLM", "VOL.LLM\VOL.LLM.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VOL.APS", "VOL.APS\VOL.APS.csproj", "{1FF85BF9-7FC6-4185-B8D1-97C11C79F504}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VOL.DTO", "VOL.DTO\VOL.DTO.csproj", "{E6149EC5-38DA-494D-B73B-4868C74E0C10}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -57,6 +59,10 @@ Global
 		{1FF85BF9-7FC6-4185-B8D1-97C11C79F504}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1FF85BF9-7FC6-4185-B8D1-97C11C79F504}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1FF85BF9-7FC6-4185-B8D1-97C11C79F504}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E6149EC5-38DA-494D-B73B-4868C74E0C10}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E6149EC5-38DA-494D-B73B-4868C74E0C10}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E6149EC5-38DA-494D-B73B-4868C74E0C10}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E6149EC5-38DA-494D-B73B-4868C74E0C10}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
