@@ -1,33 +1,33 @@
-/*
- *接口编写处...
-*如果接口需要做Action的权限验证，请在Action上使用属性
-*如: [ApiActionPermission("aps_work_order",Enums.ActionPermissionOptions.Search)]
- */
-using Microsoft.AspNetCore.Mvc;
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Http;
-using VOL.Entity.DomainModels;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using VOL.APS.IServices;
+using VOL.Core.Enums;
+using VOL.Core.Filters;
+using VOL.DTO.Aps_Work_Order;
 
 namespace VOL.APS.Controllers
 {
-    public partial class aps_work_orderController
+    public partial class Aps_Work_OrderController
     {
-        private readonly Iaps_work_orderService _service;//访问业务代码
+        private readonly IAps_Work_OrderService _service;
         private readonly IHttpContextAccessor _httpContextAccessor;
 
         [ActivatorUtilitiesConstructor]
-        public aps_work_orderController(
-            Iaps_work_orderService service,
-            IHttpContextAccessor httpContextAccessor
-        )
-        : base(service)
+        public Aps_Work_OrderController(
+            IAps_Work_OrderService service,
+            IHttpContextAccessor httpContextAccessor)
+            : base(service)
         {
             _service = service;
             _httpContextAccessor = httpContextAccessor;
+        }
+
+        [ApiActionPermission(ActionPermissionOptions.Search)]
+        [HttpPost, Route("GetWorkOrderPageList")]
+        public ActionResult GetWorkOrderPageList([FromBody] ApsWorkOrderPageQueryInputDto input)
+        {
+            return JsonNormal(_service.GetWorkOrderPageList(input));
         }
     }
 }

@@ -38,6 +38,7 @@
     <ProjectReference Include="..\VOL.APS\VOL.APS.csproj" />
     <ProjectReference Include="..\VOL.Builder\VOL.Builder.csproj" />
     <ProjectReference Include="..\VOL.Core\VOL.Core.csproj" />
+    <ProjectReference Include="..\VOL.DTO\VOL.DTO.csproj" />
     <ProjectReference Include="..\VOL.Entity\VOL.Entity.csproj" />
     <ProjectReference Include="..\VOL.LLM\VOL.LLM.csproj" />
     <ProjectReference Include="..\VOL.MES\VOL.MES.csproj" />

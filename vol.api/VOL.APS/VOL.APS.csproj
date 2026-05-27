@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\VOL.Core\VOL.Core.csproj" />
+    <ProjectReference Include="..\VOL.DTO\VOL.DTO.csproj" />
   </ItemGroup>
 
 </Project>

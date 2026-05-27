@@ -44,22 +44,7 @@
       </div>
       <!-- 账号信息 -->
       <div class="account-info">
-        <p>演示账号:admin666&nbsp;密码:123456 &nbsp;&nbsp;本地账号:admin &nbsp;密码:123456</p>
-        <p></p>
-        <p style="text-align: center;">
-          <a href="https://qm.qq.com/cgi-bin/qm/qr?k=YRZBbf64qsUeEmh24I65u2aIZFn2C-Ha&jump_from=webapi&qr=1"
-            style="text-decoration: none" target="_blank">QQ4群:959924606</a>
-          &nbsp; &nbsp;&nbsp; &nbsp;
-          <a href="https://www.cctalk.com/m/group/90268531" style="text-decoration: none" target="_blank">框架视频</a>
-          &nbsp; &nbsp;&nbsp; &nbsp;
-          <a href="http://v3.volcore.xyz/" style="text-decoration: none" target="_blank">框架文档</a>
-        </p>
-        <p style="text-align: center;">
-          <a href="https://space.bilibili.com/525836469" style="text-decoration: none;"
-            target="_blank">NET视频教程(微软MVP-ACE录制)</a>
-          <a style="text-decoration: none;margin-left: 20px;" href="https://beian.miit.gov.cn/"
-            target="_blank">京ICP备19056538号-1</a>
-        </p>
+        <p>账号:admin &nbsp;密码:123456</p>
       </div>
     </div>
   </div>

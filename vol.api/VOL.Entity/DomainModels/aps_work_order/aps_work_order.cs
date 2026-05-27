@@ -13,8 +13,8 @@ using VOL.Entity.SystemModels;
 
 namespace VOL.Entity.DomainModels
 {
-    [Entity(TableCnName = "排产订单表",TableName = "aps_work_order")]
-    public partial class aps_work_order:BaseEntity
+    [Entity(TableCnName = "排产订单表",TableName = "Aps_Work_Order")]
+    public partial class Aps_Work_Order:BaseEntity
     {
         /// <summary>
        ///
@@ -32,6 +32,7 @@ namespace VOL.Entity.DomainModels
        [Display(Name ="工单号")]
        [MaxLength(50)]
        [Column(TypeName="nvarchar(50)")]
+       [Editable(true)]
        [Required(AllowEmptyStrings=false)]
        public string WorkOrderNo { get; set; }
 

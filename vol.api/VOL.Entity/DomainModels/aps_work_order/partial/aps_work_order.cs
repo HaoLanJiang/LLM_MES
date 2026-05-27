@@ -14,7 +14,7 @@ using VOL.Entity.SystemModels;
 namespace VOL.Entity.DomainModels
 {
     
-    public partial class aps_work_order
+    public partial class Aps_Work_Order
     {
         //此处配置字段(字段配置见此model的另一个partial),如果表中没有此字段请加上 [NotMapped]属性，否则会异常
     }

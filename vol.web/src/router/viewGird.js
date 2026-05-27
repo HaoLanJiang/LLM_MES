@@ -203,31 +203,14 @@ let viewgird = [
         path: '/ProductionState',
         name: 'ProductionState',
         component: () => import('@/views/mes/state/ProductionState.vue')
-    }, {
-        path: '/TestService',
-        name: 'TestService',
-        component: () => import('@/views/mes/mes/TestService.vue')
-    },
-    // NOTE: If you see: Failed to resolve import ".../LlmConversationDetails.vue",
-    // it means this file does not exist at that path; update the path to the real file or delete this route.
-    // Example (adjust to your real location): '@/views/llm/LlmConversationDetails.vue'
-    {
-        path: '/llm_conversation_details',
-        name: 'llm_conversation_details',
-        component: () => import('@/views/llm/llm_conversation_details/llm_conversation_details.vue')
-    }
-    ,{
-        path: '/aps_work_order',
-        name: 'aps_work_order',
-        component: () => import('@/views/aps/aps_work_order/aps_work_order.vue')
-    }    ,{
-        path: '/aps_machine',
-        name: 'aps_machine',
-        component: () => import('@/views/aps/aps_machine/aps_machine.vue')
-    }    ,{
-        path: '/aps_schedule_result',
-        name: 'aps_schedule_result',
-        component: () => import('@/views/aps/aps_schedule_result/aps_schedule_result.vue')
+    },{
+        path: '/ProductionEquipmentManagement',
+        name: 'ProductionEquipmentManagement',
+        component: () => import('@/views/aps/ProductionEquipmentManagement.vue')
+    },{
+        path: '/ProductionSchedulingOrder',
+        name: 'ProductionSchedulingOrder',
+        component: () => import('@/views/aps/ProductionSchedulingOrder.vue')
     }]
 
 //上面的demo、MES开头的都是示例菜单，可以任意删除 

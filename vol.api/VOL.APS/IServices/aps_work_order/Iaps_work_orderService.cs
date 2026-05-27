@@ -6,7 +6,7 @@ using VOL.Entity.DomainModels;
 
 namespace VOL.APS.IServices
 {
-    public partial interface Iaps_work_orderService : IService<aps_work_order>
+    public partial interface IAps_Work_OrderService : IService<Aps_Work_Order>
     {
     }
 }

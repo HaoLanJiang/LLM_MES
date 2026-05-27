@@ -67,7 +67,25 @@ namespace VOL.Core.Extensions
 
         public static T DicToEntity<T>(this Dictionary<string, object> dic)
         {
-            return new List<Dictionary<string, object>>() { dic }.DicToList<T>().ToList()[0];
+            return dic.MapToEntity(Activator.CreateInstance<T>());
+        }
+
+        public static T MapToEntity<T>(this Dictionary<string, object> dic, T entity)
+        {
+            if (dic == null || entity == null)
+            {
+                return entity;
+            }
+
+            foreach (PropertyInfo property in entity.GetType()
+                .GetProperties(BindingFlags.GetProperty | BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (!property.CanWrite) continue;
+                if (!dic.TryGetValue(property.Name, out object value)) continue;
+                property.SetValue(entity, value?.ToString().ChangeType(property.PropertyType), null);
+            }
+
+            return entity;
         }
         public static List<T> DicToList<T>(this List<Dictionary<string, object>> dicList)
         {
@@ -84,14 +102,7 @@ namespace VOL.Core.Extensions
         {
             foreach (Dictionary<string, object> dic in dicList)
             {
-                T model = Activator.CreateInstance<T>();
-                foreach (PropertyInfo property in model.GetType()
-                    .GetProperties(BindingFlags.GetProperty | BindingFlags.Public | BindingFlags.Instance))
-                {
-                    if (!dic.TryGetValue(property.Name, out object value)) continue;
-                    property.SetValue(model, value?.ToString().ChangeType(property.PropertyType), null);
-                }
-                yield return model;
+                yield return dic.MapToEntity(Activator.CreateInstance<T>());
             }
         }
         /// <summary>
