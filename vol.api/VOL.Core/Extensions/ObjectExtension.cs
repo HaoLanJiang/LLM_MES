@@ -162,6 +162,21 @@ namespace VOL.Core.Extensions
                     return Guid.Parse(value);
                 }
 
+                if (type == typeof(TimeSpan) || type == typeof(TimeSpan?))
+                {
+                    string value = convertibleValue.ToString();
+                    if (string.IsNullOrWhiteSpace(value))
+                    {
+                        return type == typeof(TimeSpan?) ? null : TimeSpan.Zero;
+                    }
+
+                    if (TimeSpan.TryParse(value, out TimeSpan timeSpan))
+                    {
+                        return timeSpan;
+                    }
+                    return null;
+                }
+
                 if (!type.IsGenericType) return Convert.ChangeType(convertibleValue, type);
                 if (type.ToString() == "System.Nullable`1[System.Boolean]" || type.ToString() == "System.Boolean")
                 {

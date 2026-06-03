@@ -157,7 +157,7 @@ namespace VOL.Core.Services
                 {
                     BeginDate = DateTime.Now,
                     EndDate = DateTime.Now,
-                    LogType = loggerType.ToString(),
+                    LogType = loggerType?.ToString(),
                     RequestParameter = requestParameter,
                     ResponseParameter = responseParameter,
                     Success = (int)status,

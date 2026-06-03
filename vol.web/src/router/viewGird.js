@@ -211,6 +211,22 @@ let viewgird = [
         path: '/ProductionSchedulingOrder',
         name: 'ProductionSchedulingOrder',
         component: () => import('@/views/aps/ProductionSchedulingOrder.vue')
+    },{
+        path: '/ProductionSchedulingResults',
+        name: 'ProductionSchedulingResults',
+        component: () => import('@/views/aps/ProductionSchedulingResults.vue')
+    },{
+        path: '/ProductionScheduleCalendar',
+        name: 'ProductionScheduleCalendar',
+        component: () => import('@/views/aps/ProductionScheduleCalendar.vue')
+    },{
+        path: '/ProductionSchedulingShifts',
+        name: 'ProductionSchedulingShifts',
+        component: () => import('@/views/aps/ProductionSchedulingShifts.vue')
+    },{
+        path: '/ProductionEquipmentManagement',
+        name: 'ProductionEquipmentManagement',
+        component: () => import('@/views/aps/ProductionEquipmentManagement.vue')
     }]
 
 //上面的demo、MES开头的都是示例菜单，可以任意删除 
