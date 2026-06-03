@@ -10,6 +10,11 @@ namespace VOL.APS.IServices
 {
     public partial interface IAps_MachineService
     {
+        /// <summary>
+        /// 分页获取设备列表。
+        /// </summary>
+        /// <param name="input">分页查询条件，包含设备编码、设备名称、页码、每页条数及排序信息。</param>
+        /// <returns>返回设备分页数据集合。</returns>
         PageGridData<ApsMachinePageOutputDto> GetMachinePageList(ApsMachinePageQueryInputDto input);
     }
  }

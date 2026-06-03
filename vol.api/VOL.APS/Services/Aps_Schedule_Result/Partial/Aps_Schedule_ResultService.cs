@@ -29,6 +29,11 @@ namespace VOL.APS.Services
             _repository = dbRepository;
         }
 
+        /// <summary>
+        /// 分页获取排产结果列表。
+        /// </summary>
+        /// <param name="input">分页查询条件，包含工单号、设备编码、排产状态、页码、每页条数及排序信息。</param>
+        /// <returns>返回排产结果分页数据集合。</returns>
         public PageGridData<ApsScheduleResultPageOutputDto> GetScheduleResultPageList(ApsScheduleResultPageQueryInputDto input)
         {
             input ??= new ApsScheduleResultPageQueryInputDto();
@@ -104,6 +109,11 @@ namespace VOL.APS.Services
             };
         }
 
+        /// <summary>
+        /// 新增排产结果数据。
+        /// </summary>
+        /// <param name="saveModel">保存模型，主表数据中应包含排产结果信息。</param>
+        /// <returns>返回新增操作结果。</returns>
         public override WebResponseContent Add(SaveModel saveModel)
         {
             if (saveModel?.MainData == null || saveModel.MainData.Count == 0)
@@ -128,6 +138,11 @@ namespace VOL.APS.Services
             });
         }
 
+        /// <summary>
+        /// 更新排产结果数据。
+        /// </summary>
+        /// <param name="saveModel">保存模型，主表数据中应包含要修改的排产结果主键及业务信息。</param>
+        /// <returns>返回更新操作结果。</returns>
         public override WebResponseContent Update(SaveModel saveModel)
         {
             if (saveModel?.MainData == null || saveModel.MainData.Count == 0)
@@ -184,6 +199,12 @@ namespace VOL.APS.Services
             });
         }
 
+        /// <summary>
+        /// 删除排产结果数据。
+        /// </summary>
+        /// <param name="keys">要删除的数据主键集合。</param>
+        /// <param name="delList">是否按列表删除模式执行删除。</param>
+        /// <returns>返回删除操作结果。</returns>
         public override WebResponseContent Del(object[] keys, bool delList = false)
         {
             if (keys == null || keys.Length == 0)
@@ -216,6 +237,12 @@ namespace VOL.APS.Services
             });
         }
 
+        /// <summary>
+        /// 校验排产结果数据的合法性。
+        /// </summary>
+        /// <param name="entity">待校验的排产结果实体。</param>
+        /// <param name="isUpdate">是否为更新操作，<c>true</c> 表示更新，<c>false</c> 表示新增。</param>
+        /// <returns>返回校验结果，校验失败时包含对应错误信息。</returns>
         private WebResponseContent ValidateScheduleResult(Aps_Schedule_Result entity, bool isUpdate)
         {
             entity.WorkOrderNo = entity.WorkOrderNo?.Trim();

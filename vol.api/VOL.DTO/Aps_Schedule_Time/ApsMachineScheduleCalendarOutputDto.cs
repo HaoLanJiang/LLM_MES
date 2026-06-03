@@ -14,6 +14,8 @@ namespace VOL.DTO.Aps_Schedule_Time
 
         public string? ShiftNames { get; set; }
 
+        public string? RestShiftNames { get; set; }
+
         public string? TimeRangeText { get; set; }
 
         public string? DisplayText { get; set; }

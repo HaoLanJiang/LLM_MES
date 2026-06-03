@@ -23,6 +23,11 @@ namespace VOL.APS.Controllers
             _httpContextAccessor = httpContextAccessor;
         }
 
+        /// <summary>
+        /// 分页查询排产结果列表。
+        /// </summary>
+        /// <param name="input">排产结果分页查询条件。</param>
+        /// <returns>返回排产结果分页数据。</returns>
         [ApiActionPermission(ActionPermissionOptions.Search)]
         [HttpPost, Route("GetScheduleResultPageList")]
         public ActionResult GetScheduleResultPageList([FromBody] ApsScheduleResultPageQueryInputDto input)

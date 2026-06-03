@@ -4,6 +4,7 @@
 *如: [ApiActionPermission("Aps_Schedule_Time",Enums.ActionPermissionOptions.Search)]
  */
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -33,6 +34,11 @@ namespace VOL.APS.Controllers
             _httpContextAccessor = httpContextAccessor;
         }
 
+        /// <summary>
+        /// 获取设备月度排产日历数据。
+        /// </summary>
+        /// <param name="input">设备排产日历查询条件。</param>
+        /// <returns>返回设备排产日历列表。</returns>
         [ApiActionPermission(ActionPermissionOptions.Search)]
         [HttpPost, Route("GetMachineScheduleCalendar")]
         public ActionResult GetMachineScheduleCalendar([FromBody] ApsMachineScheduleCalendarQueryInputDto input)
@@ -40,7 +46,36 @@ namespace VOL.APS.Controllers
             return JsonNormal(new { rows = _service.GetMachineScheduleCalendar(input) });
         }
 
-        [ApiActionPermission(ActionPermissionOptions.Add)]
+        /// <summary>
+        /// 获取设备指定日期的班次排产明细。
+        /// </summary>
+        /// <param name="input">班次排产明细查询条件。</param>
+        /// <returns>返回班次排产明细列表。</returns>
+        [ApiActionPermission(ActionPermissionOptions.Search)]
+        [HttpPost, Route("GetMachineScheduleTimeDetail")]
+        public ActionResult GetMachineScheduleTimeDetail([FromBody] ApsMachineScheduleTimeDetailQueryInputDto input)
+        {
+            return JsonNormal(new { rows = _service.GetMachineScheduleTimeDetail(input) });
+        }
+
+        /// <summary>
+        /// 保存设备指定日期的班次排产明细。
+        /// </summary>
+        /// <param name="input">班次排产明细保存参数。</param>
+        /// <returns>返回保存结果。</returns>
+        [ApiActionPermission(ActionPermissionOptions.Update)]
+        [HttpPost, Route("SaveMachineScheduleTimeDetail")]
+        public ActionResult SaveMachineScheduleTimeDetail([FromBody] SaveApsMachineScheduleTimeDetailInputDto input)
+        {
+            return Json(_service.SaveMachineScheduleTimeDetail(input));
+        }
+
+        /// <summary>
+        /// 批量生成未来排产时间。
+        /// </summary>
+        /// <param name="input">排产时间生成参数。</param>
+        /// <returns>返回生成结果。</returns>
+        [AllowAnonymous]
         [HttpPost, Route("GenerateFutureScheduleTime")]
         public ActionResult GenerateFutureScheduleTime([FromBody] GenerateApsScheduleTimeInputDto input)
         {

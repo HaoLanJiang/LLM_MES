@@ -29,6 +29,11 @@ namespace VOL.APS.Services
             _repository = dbRepository;
         }
 
+        /// <summary>
+        /// 分页获取工单列表。
+        /// </summary>
+        /// <param name="input">分页查询条件，包含工单号、客户名称、排产状态、页码、每页条数及排序信息。</param>
+        /// <returns>返回工单分页数据集合。</returns>
         public PageGridData<ApsWorkOrderPageOutputDto> GetWorkOrderPageList(ApsWorkOrderPageQueryInputDto input)
         {
             input ??= new ApsWorkOrderPageQueryInputDto();
@@ -102,6 +107,11 @@ namespace VOL.APS.Services
             };
         }
 
+        /// <summary>
+        /// 新增工单数据。
+        /// </summary>
+        /// <param name="saveModel">保存模型，主表数据中应包含工单信息。</param>
+        /// <returns>返回新增操作结果。</returns>
         public override WebResponseContent Add(SaveModel saveModel)
         {
             if (saveModel?.MainData == null || saveModel.MainData.Count == 0)
@@ -126,6 +136,11 @@ namespace VOL.APS.Services
             });
         }
 
+        /// <summary>
+        /// 更新工单数据。
+        /// </summary>
+        /// <param name="saveModel">保存模型，主表数据中应包含要修改的工单主键及工单信息。</param>
+        /// <returns>返回更新操作结果。</returns>
         public override WebResponseContent Update(SaveModel saveModel)
         {
             if (saveModel?.MainData == null || saveModel.MainData.Count == 0)
@@ -179,6 +194,12 @@ namespace VOL.APS.Services
             });
         }
 
+        /// <summary>
+        /// 删除工单数据。
+        /// </summary>
+        /// <param name="keys">要删除的数据主键集合。</param>
+        /// <param name="delList">是否按列表删除模式执行删除。</param>
+        /// <returns>返回删除操作结果。</returns>
         public override WebResponseContent Del(object[] keys, bool delList = false)
         {
             if (keys == null || keys.Length == 0)
@@ -211,6 +232,12 @@ namespace VOL.APS.Services
             });
         }
 
+        /// <summary>
+        /// 校验工单数据的合法性。
+        /// </summary>
+        /// <param name="entity">待校验的工单实体。</param>
+        /// <param name="isUpdate">是否为更新操作，<c>true</c> 表示更新，<c>false</c> 表示新增。</param>
+        /// <returns>返回校验结果，校验失败时包含对应错误信息。</returns>
         private WebResponseContent ValidateWorkOrder(Aps_Work_Order entity, bool isUpdate)
         {
             entity.WorkOrderNo = entity.WorkOrderNo?.Trim();

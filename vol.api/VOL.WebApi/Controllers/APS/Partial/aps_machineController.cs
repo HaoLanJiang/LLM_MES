@@ -23,6 +23,11 @@ namespace VOL.APS.Controllers
             _httpContextAccessor = httpContextAccessor;
         }
 
+        /// <summary>
+        /// 分页查询设备列表。
+        /// </summary>
+        /// <param name="input">设备分页查询条件。</param>
+        /// <returns>返回设备分页结果。</returns>
         [ApiActionPermission(ActionPermissionOptions.Search)]
         [HttpPost, Route("GetMachinePageList")]
         public ActionResult GetMachinePageList([FromBody] ApsMachinePageQueryInputDto input)

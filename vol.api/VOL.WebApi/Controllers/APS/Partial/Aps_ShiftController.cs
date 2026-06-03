@@ -23,6 +23,11 @@ namespace VOL.APS.Controllers
             _httpContextAccessor = httpContextAccessor;
         }
 
+        /// <summary>
+        /// 分页查询班次列表。
+        /// </summary>
+        /// <param name="input">班次分页查询条件。</param>
+        /// <returns>返回班次分页结果。</returns>
         [ApiActionPermission(ActionPermissionOptions.Search)]
         [HttpPost, Route("GetShiftPageList")]
         public ActionResult GetShiftPageList([FromBody] ApsShiftPageQueryInputDto input)

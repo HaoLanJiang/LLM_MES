@@ -36,6 +36,11 @@ namespace VOL.APS.Services
             _repository = dbRepository;
         }
 
+        /// <summary>
+        /// 获取设备月度排产日历数据。
+        /// </summary>
+        /// <param name="input">查询条件，包含设备编码、设备名称以及目标年月。</param>
+        /// <returns>返回按日期汇总的设备排产日历数据集合。</returns>
         public List<ApsMachineScheduleCalendarOutputDto> GetMachineScheduleCalendar(ApsMachineScheduleCalendarQueryInputDto input)
         {
             input ??= new ApsMachineScheduleCalendarQueryInputDto();
@@ -45,8 +50,10 @@ namespace VOL.APS.Services
             int year = input.Year > 0 ? input.Year : DateTime.Now.Year;
             int month = input.Month is >= 1 and <= 12 ? input.Month : DateTime.Now.Month;
 
-            DateTime startDate = new DateTime(year, month, 1);
-            DateTime endDate = startDate.AddMonths(1);
+            DateTime currentMonthStart = new DateTime(year, month, 1);
+            DateTime startDate = currentMonthStart.AddMonths(-1);
+            DateTime nextMonthLastDate = currentMonthStart.AddMonths(2).AddDays(-1);
+            DateTime endDate = nextMonthLastDate.AddDays(1);
 
             var query = _repository.DbContext
                 .Set<Aps_Schedule_Time>()
@@ -68,15 +75,22 @@ namespace VOL.APS.Services
                 .OrderBy(x => x.Key)
                 .Select(group =>
                 {
+                    var activeGroup = group.Where(x => x.status == 1 && x.available_minutes > 0).ToList();
+                    var restGroup = group.Where(x => x.status != 1 || x.available_minutes <= 0).ToList();
                     int availableMinutes = group.Sum(x => x.available_minutes);
                     int usedMinutes = group.Sum(x => x.used_minutes);
                     int remainMinutes = group.Sum(x => x.remain_minutes);
-                    List<string> shiftNames = group
+                    List<string> shiftNames = activeGroup
                         .Select(x => x.shift_name)
                         .Where(x => !string.IsNullOrWhiteSpace(x))
                         .Distinct()
                         .ToList();
-                    List<string> timeRanges = group
+                    List<string> restShiftNames = restGroup
+                        .Select(x => x.shift_name)
+                        .Where(x => !string.IsNullOrWhiteSpace(x))
+                        .Distinct()
+                        .ToList();
+                    List<string> timeRanges = activeGroup
                         .OrderBy(x => x.start_datetime)
                         .Select(x => $"{x.start_datetime:HH:mm}-{x.end_datetime:HH:mm}")
                         .Distinct()
@@ -91,6 +105,7 @@ namespace VOL.APS.Services
                         RemainMinutes = remainMinutes,
                         Status = status,
                         ShiftNames = string.Join(" / ", shiftNames),
+                        RestShiftNames = string.Join(" / ", restShiftNames),
                         TimeRangeText = string.Join(", ", timeRanges),
                         DisplayText = availableMinutes > 0 ? availableMinutes.ToString() : "REST"
                     };
@@ -98,6 +113,151 @@ namespace VOL.APS.Services
                 .ToList();
         }
 
+        /// <summary>
+        /// 获取指定设备在指定日期的班次排产明细。
+        /// </summary>
+        /// <param name="input">查询条件，包含设备编码和排产日期。</param>
+        /// <returns>返回当日班次排产明细集合。</returns>
+        public List<ApsMachineScheduleTimeDetailOutputDto> GetMachineScheduleTimeDetail(ApsMachineScheduleTimeDetailQueryInputDto input)
+        {
+            input ??= new ApsMachineScheduleTimeDetailQueryInputDto();
+
+            string machineCode = input.MachineCode?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(machineCode))
+            {
+                return new List<ApsMachineScheduleTimeDetailOutputDto>();
+            }
+
+            if (!DateTime.TryParse(input.ScheduleDate, out DateTime scheduleDate))
+            {
+                return new List<ApsMachineScheduleTimeDetailOutputDto>();
+            }
+
+            DateTime targetDate = scheduleDate.Date;
+            DateTime nextDate = targetDate.AddDays(1);
+
+            return _repository.DbContext
+                .Set<Aps_Schedule_Time>()
+                .AsNoTracking()
+                .Where(x => x.line_code == machineCode
+                    && x.schedule_date >= targetDate
+                    && x.schedule_date < nextDate)
+                .OrderBy(x => x.start_datetime)
+                .Select(x => new ApsMachineScheduleTimeDetailOutputDto
+                {
+                    Id = x.id,
+                    ScheduleDate = x.schedule_date.ToString("yyyy-MM-dd"),
+                    MachineCode = x.line_code,
+                    MachineName = x.line_name,
+                    ShiftId = x.shift_id,
+                    ShiftCode = x.shift_code,
+                    ShiftName = x.shift_name,
+                    StartDateTime = x.start_datetime.ToString("yyyy-MM-dd HH:mm:ss"),
+                    EndDateTime = x.end_datetime.ToString("yyyy-MM-dd HH:mm:ss"),
+                    AvailableMinutes = x.available_minutes,
+                    UsedMinutes = x.used_minutes,
+                    RemainMinutes = x.remain_minutes,
+                    Status = x.status,
+                    IsRest = x.status != 1 || x.available_minutes <= 0
+                })
+                .ToList();
+        }
+
+        /// <summary>
+        /// 保存设备指定日期的班次排产明细。
+        /// </summary>
+        /// <param name="input">保存参数，包含设备编码、排产日期及需要更新的班次明细。</param>
+        /// <returns>返回保存操作结果。</returns>
+        public WebResponseContent SaveMachineScheduleTimeDetail(SaveApsMachineScheduleTimeDetailInputDto input)
+        {
+            input ??= new SaveApsMachineScheduleTimeDetailInputDto();
+            string machineCode = input.MachineCode?.Trim() ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(machineCode))
+            {
+                return new WebResponseContent().Error("设备编号不能为空");
+            }
+
+            if (!DateTime.TryParse(input.ScheduleDate, out DateTime scheduleDate))
+            {
+                return new WebResponseContent().Error("排产日期格式不正确");
+            }
+
+            if (input.Items == null || input.Items.Count == 0)
+            {
+                return new WebResponseContent().Error("未获取到可保存的班次数据");
+            }
+
+            DateTime targetDate = scheduleDate.Date;
+            DateTime nextDate = targetDate.AddDays(1);
+            List<long> ids = input.Items.Where(x => x.Id > 0).Select(x => x.Id).Distinct().ToList();
+
+            List<Aps_Schedule_Time> dbList = _repository.DbContext
+                .Set<Aps_Schedule_Time>()
+                .Where(x => x.line_code == machineCode
+                    && x.schedule_date >= targetDate
+                    && x.schedule_date < nextDate
+                    && ids.Contains(x.id))
+                .ToList();
+
+            if (dbList.Count != ids.Count)
+            {
+                return new WebResponseContent().Error("部分班次数据不存在，请刷新后重试");
+            }
+
+            Dictionary<long, Aps_Schedule_Time> dbMap = dbList.ToDictionary(x => x.id, x => x);
+            DateTime now = DateTime.Now;
+
+            foreach (SaveApsMachineScheduleTimeDetailItemDto item in input.Items)
+            {
+                if (!dbMap.TryGetValue(item.Id, out Aps_Schedule_Time? entity) || entity == null)
+                {
+                    return new WebResponseContent().Error("班次数据不存在，请刷新后重试");
+                }
+
+                if (!DateTime.TryParse(item.StartDateTime, out DateTime startDateTime))
+                {
+                    return new WebResponseContent().Error($"班次[{entity.shift_name}]开始时间格式不正确");
+                }
+
+                if (!DateTime.TryParse(item.EndDateTime, out DateTime endDateTime))
+                {
+                    return new WebResponseContent().Error($"班次[{entity.shift_name}]结束时间格式不正确");
+                }
+
+                if (endDateTime <= startDateTime)
+                {
+                    return new WebResponseContent().Error($"班次[{entity.shift_name}]结束时间必须大于开始时间");
+                }
+
+                int availableMinutes = item.IsRest ? 0 : (int)Math.Round((endDateTime - startDateTime).TotalMinutes, MidpointRounding.AwayFromZero);
+                if (!item.IsRest && availableMinutes <= 0)
+                {
+                    return new WebResponseContent().Error($"班次[{entity.shift_name}]工作分钟数必须大于0");
+                }
+
+                entity.start_datetime = startDateTime;
+                entity.end_datetime = endDateTime;
+                entity.available_minutes = availableMinutes;
+                entity.used_minutes = item.IsRest ? 0 : entity.used_minutes;
+                entity.remain_minutes = item.IsRest ? 0 : Math.Max(availableMinutes - entity.used_minutes, 0);
+                entity.status = (sbyte)(item.IsRest ? 4 : 1);
+                entity.update_time = now;
+            }
+
+            return _repository.DbContextBeginTransaction(() =>
+            {
+                _repository.UpdateRange(dbList);
+                _repository.SaveChanges();
+                return new WebResponseContent().OK("保存成功");
+            });
+        }
+
+        /// <summary>
+        /// 按设备和启用班次批量生成未来排产时间。
+        /// </summary>
+        /// <param name="input">生成参数，包含开始日期和生成天数。</param>
+        /// <returns>返回生成操作结果以及生成统计信息。</returns>
         public WebResponseContent GenerateFutureScheduleTime(GenerateApsScheduleTimeInputDto input)
         {
             input ??= new GenerateApsScheduleTimeInputDto();
@@ -217,8 +377,8 @@ namespace VOL.APS.Services
 
             return _repository.DbContextBeginTransaction(() =>
             {
-                _repository.DbContext.Set<Aps_Schedule_Time>().AddRange(addList);
-                _repository.DbContext.SaveChanges();
+                _repository.AddRange(addList);
+                _repository.SaveChanges();
 
                 return new WebResponseContent().OK("未来排产时间生成成功", new
                 {
@@ -232,6 +392,13 @@ namespace VOL.APS.Services
             });
         }
 
+        /// <summary>
+        /// 构造排产时间唯一键。
+        /// </summary>
+        /// <param name="scheduleDate">排产日期。</param>
+        /// <param name="lineCode">设备编码。</param>
+        /// <param name="shiftCode">班次编码。</param>
+        /// <returns>返回由日期、设备和班次组成的唯一键。</returns>
         private static string BuildScheduleTimeKey(DateTime scheduleDate, string lineCode, string shiftCode)
         {
             return $"{scheduleDate:yyyy-MM-dd}|{lineCode}|{shiftCode}";

@@ -31,6 +31,11 @@ namespace VOL.APS.Services
             _repository = dbRepository;
         }
 
+        /// <summary>
+        /// 分页获取班次列表。
+        /// </summary>
+        /// <param name="input">分页查询条件，包含班次编码、名称、启用状态、页码、每页条数及排序信息。</param>
+        /// <returns>返回班次分页数据集合。</returns>
         public PageGridData<ApsShiftPageOutputDto> GetShiftPageList(ApsShiftPageQueryInputDto input)
         {
             input ??= new ApsShiftPageQueryInputDto();
@@ -100,6 +105,11 @@ namespace VOL.APS.Services
             };
         }
 
+        /// <summary>
+        /// 新增班次数据。
+        /// </summary>
+        /// <param name="saveModel">保存模型，主表数据中应包含班次信息。</param>
+        /// <returns>返回新增操作结果。</returns>
         public override WebResponseContent Add(SaveModel saveModel)
         {
             if (saveModel?.MainData == null || saveModel.MainData.Count == 0)
@@ -129,6 +139,11 @@ namespace VOL.APS.Services
             });
         }
 
+        /// <summary>
+        /// 更新班次数据。
+        /// </summary>
+        /// <param name="saveModel">保存模型，主表数据中应包含要修改的班次主键及班次信息。</param>
+        /// <returns>返回更新操作结果。</returns>
         public override WebResponseContent Update(SaveModel saveModel)
         {
             if (saveModel?.MainData == null || saveModel.MainData.Count == 0)
@@ -176,6 +191,12 @@ namespace VOL.APS.Services
             });
         }
 
+        /// <summary>
+        /// 删除班次数据。
+        /// </summary>
+        /// <param name="keys">要删除的数据主键集合。</param>
+        /// <param name="delList">是否按列表删除模式执行删除。</param>
+        /// <returns>返回删除操作结果。</returns>
         public override WebResponseContent Del(object[] keys, bool delList = false)
         {
             if (keys == null || keys.Length == 0)
@@ -207,6 +228,12 @@ namespace VOL.APS.Services
             });
         }
 
+        /// <summary>
+        /// 校验班次数据的合法性。
+        /// </summary>
+        /// <param name="entity">待校验的班次实体。</param>
+        /// <param name="isUpdate">是否为更新操作，<c>true</c> 表示更新，<c>false</c> 表示新增。</param>
+        /// <returns>返回校验结果，校验失败时包含对应错误信息。</returns>
         private WebResponseContent ValidateShift(Aps_Shift entity, bool isUpdate)
         {
             entity.shift_code = entity.shift_code?.Trim();

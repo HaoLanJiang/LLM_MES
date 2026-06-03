@@ -23,6 +23,11 @@ namespace VOL.APS.Controllers
             _httpContextAccessor = httpContextAccessor;
         }
 
+        /// <summary>
+        /// 分页查询工单列表。
+        /// </summary>
+        /// <param name="input">工单分页查询条件。</param>
+        /// <returns>返回工单分页数据。</returns>
         [ApiActionPermission(ActionPermissionOptions.Search)]
         [HttpPost, Route("GetWorkOrderPageList")]
         public ActionResult GetWorkOrderPageList([FromBody] ApsWorkOrderPageQueryInputDto input)
