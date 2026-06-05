@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,6 +34,19 @@ namespace VOL.APS.Controllers
         public ActionResult GetWorkOrderPageList([FromBody] ApsWorkOrderPageQueryInputDto input)
         {
             return JsonNormal(_service.GetWorkOrderPageList(input));
+        }
+
+        /// <summary>
+        /// 批量新增工单测试数据
+        /// </summary>
+        /// <param name="input">测试数据生成参数</param>
+        /// <returns>新增结果</returns>
+        //[ApiActionPermission(ActionPermissionOptions.Add)]
+        [AllowAnonymous]
+        [HttpPost, Route("CreateTestWorkOrders")]
+        public ActionResult CreateTestWorkOrders([FromBody] CreateApsWorkOrderTestDataInputDto input)
+        {
+            return Json(_service.CreateTestWorkOrders(input));
         }
     }
 }

@@ -50,7 +50,7 @@ namespace VOL.Entity.DomainModels
        /// <summary>
        ///每日产能分钟
        /// </summary>
-       [Display(Name ="每日产能分钟")]
+       [Display(Name ="每日产能")]
        [Column(TypeName="int")]
        [Editable(true)]
        public int? CapacityMinutesPerDay { get; set; }

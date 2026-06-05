@@ -42,7 +42,7 @@
                     show-overflow-tooltip />
                 <el-table-column prop="MachineName" label="设备名称" min-width="220" sortable="custom"
                     show-overflow-tooltip />
-                <el-table-column prop="CapacityMinutesPerDay" label="每日产能分钟" min-width="150" sortable="custom"
+                <el-table-column prop="CapacityMinutesPerDay" label="每日产能" min-width="150" sortable="custom"
                     align="right" />
                 <el-table-column prop="Remark" label="备注" min-width="260" sortable="custom" show-overflow-tooltip />
                 <el-table-column label="操作" width="120" fixed="right" align="center">
@@ -70,7 +70,7 @@
                     <el-input v-model="editForm.MachineName" maxlength="100" placeholder="请输入设备名称" />
                 </el-form-item>
 
-                <el-form-item label="每日产能分钟" prop="CapacityMinutesPerDay">
+                <el-form-item label="每日产能" prop="CapacityMinutesPerDay">
                     <el-input-number v-model="editForm.CapacityMinutesPerDay" :min="0" :precision="0"
                         controls-position="right" style="width: 100%" />
                 </el-form-item>

@@ -58,7 +58,7 @@
                 <el-table-column prop="LatestDeliveryDate" label="最晚交付日期" min-width="170" sortable="custom" />
                 <el-table-column prop="ProcessMinutes" label="加工分钟数" min-width="120" sortable="custom"
                     align="right" />
-                <el-table-column prop="RequiredMachine" label="指定设备" min-width="130" show-overflow-tooltip />
+                <el-table-column prop="RequiredMachine" label="指定设备" min-width="180" show-overflow-tooltip />
                 <el-table-column prop="ChangeoverGroup" label="换型分组" min-width="120" show-overflow-tooltip />
                 <el-table-column prop="ScheduleStatus" label="排产状态" min-width="110" sortable="custom" />
                 <el-table-column prop="Remark" label="备注" min-width="220" show-overflow-tooltip />
@@ -143,7 +143,21 @@
                     </el-col>
                     <el-col :span="12">
                         <el-form-item label="指定设备" prop="RequiredMachine">
-                            <el-input v-model="editForm.RequiredMachine" maxlength="50" placeholder="请输入指定设备" />
+                            <el-select
+                                v-model="editForm.RequiredMachineList"
+                                multiple
+                                clearable
+                                collapse-tags
+                                collapse-tags-tooltip
+                                filterable
+                                placeholder="不选择时表示可在任意设备生产"
+                                style="width: 100%">
+                                <el-option
+                                    v-for="item in machineOptions"
+                                    :key="item.value"
+                                    :label="item.label"
+                                    :value="item.value" />
+                            </el-select>
                         </el-form-item>
                     </el-col>
                     <el-col :span="12">
@@ -170,6 +184,7 @@
 
 <script setup>
 import { getCurrentInstance, nextTick, onMounted, reactive, ref } from 'vue'
+import { initDataSource as initDicDataSource } from '@/components/basic/VolForm/VolFormProvider.js'
 
 const { proxy } = getCurrentInstance()
 
@@ -181,6 +196,7 @@ const dialogVisible = ref(false)
 const dialogMode = ref('add')
 const formRef = ref()
 const tableHeight = 'calc(100vh - 382px)'
+const machineOptions = ref([])
 
 const queryForm = reactive({
     workOrderNo: '',
@@ -208,6 +224,8 @@ const createEditForm = () => ({
     LatestDeliveryDate: '',
     ProcessMinutes: 1,
     RequiredMachine: '',
+    RequiredMachineId: '',
+    RequiredMachineList: [],
     ChangeoverGroup: '',
     ScheduleStatus: '待排产',
     Remark: ''
@@ -222,6 +240,27 @@ const formRules = {
     EarliestStartTime: [{ required: true, message: '请选择最早开始时间', trigger: 'change' }],
     LatestDeliveryDate: [{ required: true, message: '请选择最晚交付日期', trigger: 'change' }],
     ProcessMinutes: [{ required: true, message: '请输入加工分钟数', trigger: 'change' }]
+}
+
+const loadMachineOptions = async () => {
+    const dicData = await new Promise((resolve) => {
+        initDicDataSource(
+            [[{ dataKey: '生产设备', data: [] }]],
+            proxy.http,
+            proxy.$ts,
+            Number.MAX_SAFE_INTEGER,
+            true,
+            (result) => resolve(result || [])
+        )
+    })
+
+    const dic = Array.isArray(dicData) ? dicData.find((item) => item.dicNo === '生产设备') : null
+    const rows = dic?.data || []
+
+    machineOptions.value = rows.map((item) => ({
+        label: item.value,
+        value: item.key
+    }))
 }
 
 const loadData = async () => {
@@ -282,6 +321,9 @@ const resetEditForm = () => {
 const openAddDialog = async () => {
     dialogMode.value = 'add'
     resetEditForm()
+    if (!machineOptions.value.length) {
+        await loadMachineOptions()
+    }
     dialogVisible.value = true
     await nextTick()
     formRef.value?.clearValidate()
@@ -301,10 +343,20 @@ const openEditDialog = async (row) => {
         LatestDeliveryDate: row.LatestDeliveryDate || '',
         ProcessMinutes: row.ProcessMinutes ?? 1,
         RequiredMachine: row.RequiredMachine || '',
+        RequiredMachineId: row.RequiredMachineId || '',
+        RequiredMachineList: row.RequiredMachine
+            ? row.RequiredMachine
+                .split(',')
+                .map((item) => item.trim())
+                .filter((item) => !!item)
+            : [],
         ChangeoverGroup: row.ChangeoverGroup || '',
         ScheduleStatus: row.ScheduleStatus || '待排产',
         Remark: row.Remark || ''
     })
+    if (!machineOptions.value.length) {
+        await loadMachineOptions()
+    }
     dialogVisible.value = true
     await nextTick()
     formRef.value?.clearValidate()
@@ -326,7 +378,7 @@ const handleSubmit = async () => {
         EarliestStartTime: editForm.EarliestStartTime,
         LatestDeliveryDate: editForm.LatestDeliveryDate,
         ProcessMinutes: editForm.ProcessMinutes,
-        RequiredMachine: editForm.RequiredMachine,
+        RequiredMachine: (editForm.RequiredMachineList || []).join(','),
         ChangeoverGroup: editForm.ChangeoverGroup,
         ScheduleStatus: editForm.ScheduleStatus,
         Remark: editForm.Remark
@@ -389,6 +441,7 @@ const handleDelete = () => {
 }
 
 onMounted(() => {
+    loadMachineOptions()
     loadData()
 })
 </script>

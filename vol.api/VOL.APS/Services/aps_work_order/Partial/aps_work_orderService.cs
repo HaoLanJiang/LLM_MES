@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using VOL.APS.IRepositories;
 using VOL.Core.BaseProvider;
@@ -92,6 +93,7 @@ namespace VOL.APS.Services
                     LatestDeliveryDate = x.LatestDeliveryDate,
                     ProcessMinutes = x.ProcessMinutes,
                     RequiredMachine = x.RequiredMachine,
+                    RequiredMachineId = x.RequiredMachineId,
                     ChangeoverGroup = x.ChangeoverGroup,
                     ScheduleStatus = x.ScheduleStatus,
                     Remark = x.Remark
@@ -112,6 +114,88 @@ namespace VOL.APS.Services
         /// </summary>
         /// <param name="saveModel">保存模型，主表数据中应包含工单信息。</param>
         /// <returns>返回新增操作结果。</returns>
+        public WebResponseContent CreateTestWorkOrders(CreateApsWorkOrderTestDataInputDto input)
+        {
+            input ??= new CreateApsWorkOrderTestDataInputDto();
+            int count = input.Count <= 0 ? 10 : input.Count;
+            if (count > 200)
+            {
+                return new WebResponseContent().Error("测试数据一次最多只能新增200条");
+            }
+
+            string[] customerNames =
+            {
+                "苏州精密制造有限公司",
+                "南京新能源科技有限公司",
+                "常州机电设备有限公司",
+                "上海工业材料有限公司",
+                "宁波电子科技有限公司",
+                "杭州智能制造有限公司",
+                "广州机械制造有限公司",
+                "天津重工集团",
+                "深圳新能源有限公司",
+                "华东汽车零部件有限公司"
+            };
+            string[] productCodes = { "P-1001", "P-1002", "P-1003", "P-1004", "P-1005" };
+            string[] productNames = { "电机壳体", "控制面板", "传动轴", "连接支架", "精密齿轮" };
+            string[] changeoverGroups = { "A组", "B组", "C组", "D组", "E组" };
+            string[] scheduleStatuses =
+                {
+                "待排产",
+                //"排产中", "已排产","已完成"
+            };
+
+            DateTime now = DateTime.Now;
+            List<Aps_Machine> machineList = _repository.DbContext
+                .Set<Aps_Machine>()
+                .AsNoTracking()
+                .OrderBy(x => x.MachineCode)
+                .ToList();
+            List<Aps_Work_Order> addList = new List<Aps_Work_Order>();
+
+            for (int i = 0; i < count; i++)
+            {
+                int customerIndex = i % customerNames.Length;
+                int productIndex = i % productCodes.Length;
+                int changeoverIndex = i % changeoverGroups.Length;
+                int scheduleIndex = i % scheduleStatuses.Length;
+                DateTime startTime = now.Date.AddDays(i % 15).AddHours(8 + (i % 3) * 2);
+                int processMinutes = 60 + i * 15;
+                (string requiredMachine, string requiredMachineId) = BuildTestRequiredMachine(machineList, i);
+                Aps_Work_Order entity = new Aps_Work_Order
+                {
+                    Id = Guid.NewGuid(),
+                    WorkOrderNo = $"TEST{now:yyyyMMddHHmmssfff}{i + 1:000}",
+                    CustomerName = customerNames[customerIndex],
+                    CustomerPriority = customerIndex + 1,
+                    ProductCode = productCodes[productIndex],
+                    ProductName = productNames[productIndex],
+                    OrderQty = (100 + i) * 15,
+                    EarliestStartTime = startTime,
+                    LatestDeliveryDate = startTime.AddDays(3 + (i % 5)),
+                    ProcessMinutes = processMinutes,
+                    RequiredMachine = requiredMachine,
+                    RequiredMachineId = requiredMachineId,
+                    ChangeoverGroup = changeoverGroups[changeoverIndex],
+                    ScheduleStatus = scheduleStatuses[scheduleIndex],
+                    Remark = $"测试工单-{now:yyyy-MM-dd HH:mm:ss}"
+                };
+                entity.SetCreateDefaultVal();
+                addList.Add(entity);
+            }
+
+            return _repository.DbContextBeginTransaction(() =>
+            {
+                _repository.AddRange(addList);
+                _repository.SaveChanges();
+                return new WebResponseContent().OK($"成功新增{addList.Count}条测试工单", new
+                {
+                    count = addList.Count,
+                    workOrderNos = addList.Select(x => x.WorkOrderNo).ToList()
+                });
+            });
+        }
+
         public override WebResponseContent Add(SaveModel saveModel)
         {
             if (saveModel?.MainData == null || saveModel.MainData.Count == 0)
@@ -121,6 +205,12 @@ namespace VOL.APS.Services
 
             Aps_Work_Order entity = saveModel.MainData.MapToEntity(new Aps_Work_Order());
             entity.Id = entity.Id == Guid.Empty ? Guid.NewGuid() : entity.Id;
+
+            WebResponseContent machineResult = ResolveRequiredMachines(entity);
+            if (!machineResult.Status)
+            {
+                return machineResult;
+            }
 
             WebResponseContent validateResult = ValidateWorkOrder(entity, false);
             if (!validateResult.Status)
@@ -162,6 +252,12 @@ namespace VOL.APS.Services
 
             dbEntity = saveModel.MainData.MapToEntity(dbEntity);
 
+            WebResponseContent machineResult = ResolveRequiredMachines(dbEntity);
+            if (!machineResult.Status)
+            {
+                return machineResult;
+            }
+
             WebResponseContent validateResult = ValidateWorkOrder(dbEntity, true);
             if (!validateResult.Status)
             {
@@ -183,6 +279,7 @@ namespace VOL.APS.Services
                     x.LatestDeliveryDate,
                     x.ProcessMinutes,
                     x.RequiredMachine,
+                    x.RequiredMachineId,
                     x.ChangeoverGroup,
                     x.ScheduleStatus,
                     x.Remark,
@@ -238,6 +335,100 @@ namespace VOL.APS.Services
         /// <param name="entity">待校验的工单实体。</param>
         /// <param name="isUpdate">是否为更新操作，<c>true</c> 表示更新，<c>false</c> 表示新增。</param>
         /// <returns>返回校验结果，校验失败时包含对应错误信息。</returns>
+        private WebResponseContent ResolveRequiredMachines(Aps_Work_Order entity)
+        {
+            string requiredMachineText = (entity.RequiredMachine ?? string.Empty).Replace('，', ',').Trim();
+            entity.RequiredMachineId = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(requiredMachineText))
+            {
+                entity.RequiredMachine = string.Empty;
+                entity.RequiredMachineId = string.Empty;
+                return new WebResponseContent(true);
+            }
+
+            List<string> tokens = requiredMachineText
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => x.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (tokens.Count == 0)
+            {
+                entity.RequiredMachine = string.Empty;
+                entity.RequiredMachineId = string.Empty;
+                return new WebResponseContent(true);
+            }
+
+            List<Guid> machineIds = new List<Guid>();
+            foreach (string token in tokens)
+            {
+                if (!Guid.TryParse(token, out Guid machineId) || machineId == Guid.Empty)
+                {
+                    return new WebResponseContent().Error($"指定的设备ID无效: {token}");
+                }
+
+                machineIds.Add(machineId);
+            }
+
+            List<Aps_Machine> machineList = _repository.DbContext
+                .Set<Aps_Machine>()
+                .AsNoTracking()
+                .Where(x => machineIds.Contains(x.Id))
+                .ToList();
+
+            Dictionary<Guid, Aps_Machine> idMap = machineList
+                .GroupBy(x => x.Id)
+                .ToDictionary(x => x.Key, x => x.First());
+
+            List<Aps_Machine> selectedMachines = new List<Aps_Machine>();
+            foreach (string token in tokens)
+            {
+                if (Guid.TryParse(token, out Guid machineId)
+                    && idMap.TryGetValue(machineId, out Aps_Machine? machine)
+                    && machine != null)
+                {
+                    selectedMachines.Add(machine);
+                    continue;
+                }
+
+                return new WebResponseContent().Error($"指定的机器不存在: {token}");
+            }
+
+            List<Aps_Machine> distinctMachines = selectedMachines
+                .GroupBy(x => x.Id)
+                .Select(x => x.First())
+                .ToList();
+
+            entity.RequiredMachine = string.Join(",", distinctMachines.Select(x => x.MachineCode));
+            entity.RequiredMachineId = string.Join(",", distinctMachines.Select(x => x.Id.ToString()));
+            return new WebResponseContent(true);
+        }
+
+        private static (string requiredMachine, string requiredMachineId) BuildTestRequiredMachine(List<Aps_Machine> machineList, int index)
+        {
+            if (machineList == null || machineList.Count == 0 || index % 3 == 0)
+            {
+                return (string.Empty, string.Empty);
+            }
+
+            if (machineList.Count == 1 || index % 3 == 1)
+            {
+                Aps_Machine machine = machineList[index % machineList.Count];
+                return (machine.MachineCode ?? string.Empty, machine.Id.ToString());
+            }
+
+            Aps_Machine firstMachine = machineList[index % machineList.Count];
+            Aps_Machine secondMachine = machineList[(index + 1) % machineList.Count];
+            if (firstMachine.Id == secondMachine.Id)
+            {
+                return (firstMachine.MachineCode ?? string.Empty, firstMachine.Id.ToString());
+            }
+
+            return ($"{firstMachine.MachineCode},{secondMachine.MachineCode}", $"{firstMachine.Id},{secondMachine.Id}");
+        }
+
         private WebResponseContent ValidateWorkOrder(Aps_Work_Order entity, bool isUpdate)
         {
             entity.WorkOrderNo = entity.WorkOrderNo?.Trim();
@@ -245,6 +436,7 @@ namespace VOL.APS.Services
             entity.ProductCode = entity.ProductCode?.Trim();
             entity.ProductName = entity.ProductName?.Trim();
             entity.RequiredMachine = entity.RequiredMachine?.Trim();
+            entity.RequiredMachineId = entity.RequiredMachineId?.Trim();
             entity.ChangeoverGroup = entity.ChangeoverGroup?.Trim();
             entity.ScheduleStatus = entity.ScheduleStatus?.Trim();
             entity.Remark = entity.Remark?.Trim();
@@ -312,6 +504,11 @@ namespace VOL.APS.Services
             if (!string.IsNullOrEmpty(entity.RequiredMachine) && entity.RequiredMachine.Length > 50)
             {
                 return new WebResponseContent().Error("指定设备长度不能超过50");
+            }
+
+            if (!string.IsNullOrEmpty(entity.RequiredMachineId) && entity.RequiredMachineId.Length > 255)
+            {
+                return new WebResponseContent().Error("RequiredMachineId length cannot exceed 255");
             }
 
             if (!string.IsNullOrEmpty(entity.ChangeoverGroup) && entity.ChangeoverGroup.Length > 50)

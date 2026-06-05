@@ -177,6 +177,15 @@ namespace VOL.Entity.DomainModels
        [Column(TypeName="datetime")]
        public DateTime? ModifyDate { get; set; }
 
+       /// <summary>
+       ///指定设备ID
+       /// </summary>
+       [Display(Name ="指定设备ID")]
+       [MaxLength(255)]
+       [Column(TypeName="nvarchar(255)")]
+       [Required(AllowEmptyStrings=false)]
+       public string RequiredMachineId { get; set; }
+
        
     }
 }

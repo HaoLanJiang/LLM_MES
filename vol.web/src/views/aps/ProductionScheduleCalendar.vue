@@ -100,6 +100,7 @@
                             <div class="calendar-title">
                                 <span>{{ date }}</span>
                                 <span class="calendar-subtitle">每天显示该设备的生产时间，无数据则显示“休”</span>
+                                <span class="calendar-subtitle">双击可编辑内容</span>
                             </div>
                         </div>
                     </template>

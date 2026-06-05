@@ -63,6 +63,11 @@ namespace VOL.DTO.Aps_Work_Order
         public string? RequiredMachine { get; set; }
 
         /// <summary>
+        /// 指定设备ID，多个使用逗号分隔
+        /// </summary>
+        public string? RequiredMachineId { get; set; }
+
+        /// <summary>
         /// 换型分组
         /// </summary>
         public string? ChangeoverGroup { get; set; }
