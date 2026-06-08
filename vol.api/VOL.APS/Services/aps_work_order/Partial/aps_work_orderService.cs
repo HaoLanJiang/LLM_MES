@@ -146,6 +146,7 @@ namespace VOL.APS.Services
             };
 
             DateTime now = DateTime.Now;
+            Random random = new Random();
             List<Aps_Machine> machineList = _repository.DbContext
                 .Set<Aps_Machine>()
                 .AsNoTracking()
@@ -170,7 +171,7 @@ namespace VOL.APS.Services
                     CustomerPriority = customerIndex + 1,
                     ProductCode = productCodes[productIndex],
                     ProductName = productNames[productIndex],
-                    OrderQty = (100 + i) * 15,
+                    OrderQty = (100 + i) * random.Next(10, 16),
                     EarliestStartTime = startTime,
                     LatestDeliveryDate = startTime.AddDays(3 + (i % 5)),
                     ProcessMinutes = processMinutes,
