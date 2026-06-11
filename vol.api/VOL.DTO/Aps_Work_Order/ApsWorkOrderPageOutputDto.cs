@@ -3,82 +3,87 @@ using System;
 namespace VOL.DTO.Aps_Work_Order
 {
     /// <summary>
-    /// 排产工单分页查询返回 DTO
+    /// 鎺掍骇宸ュ崟鍒嗛〉鏌ヨ杩斿洖 DTO
     /// </summary>
     public class ApsWorkOrderPageOutputDto
     {
         /// <summary>
-        /// 工单主键
+        /// 宸ュ崟涓婚敭
         /// </summary>
         public Guid Id { get; set; }
 
         /// <summary>
-        /// 工单号
+        /// 宸ュ崟鍙?
         /// </summary>
         public string? WorkOrderNo { get; set; }
 
         /// <summary>
-        /// 客户名称
+        /// 瀹㈡埛鍚嶇О
         /// </summary>
         public string? CustomerName { get; set; }
 
         /// <summary>
-        /// 客户优先级
+        /// 瀹㈡埛绛夌骇
+        /// </summary>
+        public string? CustomerLevel { get; set; }
+
+        /// <summary>
+        /// 瀹㈡埛浼樺厛绾?
         /// </summary>
         public int? CustomerPriority { get; set; }
 
         /// <summary>
-        /// 产品编码
+        /// 浜у搧缂栫爜
         /// </summary>
         public string? ProductCode { get; set; }
 
         /// <summary>
-        /// 产品名称
+        /// 浜у搧鍚嶇О
         /// </summary>
         public string? ProductName { get; set; }
 
         /// <summary>
-        /// 订单数量
+        /// 璁㈠崟鏁伴噺
         /// </summary>
         public decimal OrderQty { get; set; }
 
         /// <summary>
-        /// 最早开始时间
+        /// 鏈€鏃╁紑濮嬫椂闂?
         /// </summary>
         public DateTime EarliestStartTime { get; set; }
 
         /// <summary>
-        /// 最晚交付日期
+        /// 鏈€鏅氫氦浠樻棩鏈?
         /// </summary>
         public DateTime LatestDeliveryDate { get; set; }
 
         /// <summary>
-        /// 预计加工总分钟数
+        /// 棰勮鍔犲伐鎬诲垎閽熸暟
         /// </summary>
         public int ProcessMinutes { get; set; }
 
         /// <summary>
-        /// 指定或适用设备
+        /// 鎸囧畾鎴栭€傜敤璁惧
         /// </summary>
         public string? RequiredMachine { get; set; }
 
         /// <summary>
-        /// 指定设备ID，多个使用逗号分隔
+        /// 鎸囧畾璁惧ID锛屽涓娇鐢ㄩ€楀彿鍒嗛殧
         /// </summary>
         public string? RequiredMachineId { get; set; }
 
         /// <summary>
-        /// 换型分组
+        /// 鎹㈠瀷鍒嗙粍
         /// </summary>
         public string? ChangeoverGroup { get; set; }
 
         /// <summary>
-        /// 排产状态
+        /// 鎺掍骇鐘舵€?
         /// </summary>
         public string? ScheduleStatus { get; set; }
 
         /// <summary>
-        /// 备注
+        /// 澶囨敞
         /// </summary>
         public string? Remark { get; set; }
     }

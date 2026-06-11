@@ -220,6 +220,47 @@
                         <div class="shift-edit-tip">
                             跨天班次请直接选择真实日期时间，例如 2026-06-03 20:00:00 到 2026-06-04 08:00:00。
                         </div>
+
+                        <div class="shift-order-panel">
+                            <div class="shift-order-header">
+                                <span>当前班次订单</span>
+                                <el-tag size="small" type="warning" effect="plain">
+                                    {{ (item.OrderList || []).length }} 条
+                                </el-tag>
+                            </div>
+
+                            <el-empty
+                                v-if="!(item.OrderList || []).length"
+                                description="当前班次暂无排产订单"
+                                :image-size="60"
+                            />
+
+                            <div v-else class="shift-order-list">
+                                <div v-for="order in item.OrderList" :key="order.Id" class="shift-order-item">
+                                    <div class="shift-order-main">
+                                        <div class="shift-order-title">
+                                            <span class="order-no">{{ order.WorkOrderNo || '-' }}</span>
+                                            <el-tag size="small" type="primary" effect="plain">
+                                                {{ order.ScheduleStatus || '已排产' }}
+                                            </el-tag>
+                                        </div>
+                                        <div class="shift-order-time">
+                                            {{ order.PlanStartTime || '--' }} 至 {{ order.PlanEndTime || '--' }}
+                                        </div>
+                                    </div>
+
+                                    <div class="shift-order-meta">
+                                        <span>数量：{{ order.OrderQty ?? 0 }}</span>
+                                        <span>时长：{{ order.PlanMinutes ?? 0 }} 分钟</span>
+                                        <span>客户：{{ order.CustomerName || '-' }}</span>
+                                    </div>
+
+                                    <div v-if="order.Remark" class="shift-order-remark">
+                                        备注：{{ order.Remark }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1026,6 +1067,80 @@ watch(
     color: #6b7280;
     line-height: 1.6;
     padding-left: 2px;
+}
+
+.shift-order-panel {
+    margin-top: 16px;
+    border-top: 1px dashed #dbe5f0;
+    padding-top: 16px;
+}
+
+.shift-order-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #334155;
+}
+
+.shift-order-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.shift-order-item {
+    border-radius: 14px;
+    padding: 14px 16px;
+    background: #f8fbff;
+    border: 1px solid #e3edf7;
+}
+
+.shift-order-main {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.shift-order-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.order-no {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.shift-order-time {
+    font-size: 12px;
+    color: #64748b;
+    line-height: 1.6;
+    word-break: break-all;
+}
+
+.shift-order-meta {
+    margin-top: 10px;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: #475569;
+}
+
+.shift-order-remark {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #6b7280;
+    line-height: 1.6;
+    word-break: break-all;
 }
 
 .query-card :deep(.el-card__body) {

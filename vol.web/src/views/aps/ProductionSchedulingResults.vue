@@ -39,6 +39,7 @@
                     <div class="card-title">排产结果列表</div>
                     <div class="table-actions">
                         <el-button type="primary" @click="openAddDialog">新增</el-button>
+                        <el-button type="success" @click="openSchedulingDialog">排产</el-button>
                         <el-button type="danger" @click="handleDelete">删除</el-button>
                     </div>
                 </div>
@@ -195,6 +196,65 @@
                 <el-button type="primary" :loading="submitLoading" @click="handleSubmit">保存</el-button>
             </template>
         </el-dialog>
+
+        <el-dialog v-model="schedulingDialogVisible" title="执行排产" width="640px" destroy-on-close>
+            <el-form ref="schedulingFormRef" :model="schedulingForm" :rules="schedulingRules" label-width="120px">
+                <el-form-item label="排序模式" prop="sortMode">
+                    <el-radio-group v-model="schedulingForm.sortMode">
+                        <el-radio label="规则优先模式">规则优先模式</el-radio>
+                        <el-radio label="综合评分模式">综合评分模式</el-radio>
+                    </el-radio-group>
+                </el-form-item>
+
+                <el-form-item label="开始日期" prop="startDate">
+                    <el-date-picker
+                        v-model="schedulingForm.startDate"
+                        type="date"
+                        value-format="YYYY-MM-DD"
+                        placeholder="不填默认从今天开始"
+                        style="width: 100%" />
+                </el-form-item>
+
+                <template v-if="schedulingForm.sortMode === '规则优先模式'">
+                    <el-alert
+                        title="规则优先模式会按你设置的顺序依次比较工单优先级。"
+                        type="info"
+                        :closable="false"
+                        class="rule-tip" />
+
+                    <el-form-item label="第一优先规则" prop="rule1">
+                        <el-select v-model="schedulingForm.rule1" placeholder="请选择第一优先规则" style="width: 100%">
+                            <el-option v-for="item in schedulingRuleOptions" :key="item" :label="item" :value="item" />
+                        </el-select>
+                    </el-form-item>
+
+                    <el-form-item label="第二优先规则" prop="rule2">
+                        <el-select v-model="schedulingForm.rule2" placeholder="请选择第二优先规则" style="width: 100%">
+                            <el-option v-for="item in schedulingRuleOptions" :key="item" :label="item" :value="item" />
+                        </el-select>
+                    </el-form-item>
+
+                    <el-form-item label="第三优先规则" prop="rule3">
+                        <el-select v-model="schedulingForm.rule3" placeholder="请选择第三优先规则" style="width: 100%">
+                            <el-option v-for="item in schedulingRuleOptions" :key="item" :label="item" :value="item" />
+                        </el-select>
+                    </el-form-item>
+                </template>
+
+                <template v-else>
+                    <el-alert
+                        title="综合评分模式：客户优先级 50%，订单数量 20%，交期紧急度 30%。"
+                        type="info"
+                        :closable="false"
+                        class="rule-tip" />
+                </template>
+            </el-form>
+
+            <template #footer>
+                <el-button @click="schedulingDialogVisible = false">取消</el-button>
+                <el-button type="primary" :loading="schedulingLoading" @click="handleRunScheduling">开始排产</el-button>
+            </template>
+        </el-dialog>
     </div>
 </template>
 
@@ -210,7 +270,11 @@ const selectedRows = ref([])
 const dialogVisible = ref(false)
 const dialogMode = ref('add')
 const formRef = ref()
+const schedulingDialogVisible = ref(false)
+const schedulingLoading = ref(false)
+const schedulingFormRef = ref()
 const tableHeight = 'calc(100vh - 382px)'
+const schedulingRuleOptions = ['客户优先级优先', '交期优先', '同组连续生产优先']
 
 const queryForm = reactive({
     workOrderNo: '',
@@ -248,6 +312,16 @@ const createEditForm = () => ({
 
 const editForm = reactive(createEditForm())
 
+const createSchedulingForm = () => ({
+    sortMode: '规则优先模式',
+    startDate: '',
+    rule1: '客户优先级优先',
+    rule2: '交期优先',
+    rule3: '同组连续生产优先'
+})
+
+const schedulingForm = reactive(createSchedulingForm())
+
 const formRules = {
     WorkOrderId: [{ required: true, message: '请输入工单ID', trigger: 'blur' }],
     WorkOrderNo: [{ required: true, message: '请输入工单号', trigger: 'blur' }],
@@ -256,6 +330,30 @@ const formRules = {
     PlanEndTime: [{ required: true, message: '请选择计划结束时间', trigger: 'change' }],
     PlanMinutes: [{ required: true, message: '请输入计划分钟数', trigger: 'change' }],
     OrderQty: [{ required: true, message: '请输入订单数量', trigger: 'change' }]
+}
+
+const validateRuleSequence = (_, value, callback) => {
+    if (schedulingForm.sortMode !== '规则优先模式') {
+        return callback()
+    }
+
+    if (!value) {
+        return callback(new Error('请选择规则'))
+    }
+
+    const rules = [schedulingForm.rule1, schedulingForm.rule2, schedulingForm.rule3].filter((item) => !!item)
+    if (new Set(rules).size !== rules.length) {
+        return callback(new Error('规则不能重复'))
+    }
+
+    callback()
+}
+
+const schedulingRules = {
+    sortMode: [{ required: true, message: '请选择排序模式', trigger: 'change' }],
+    rule1: [{ required: true, message: '请选择第一优先规则', trigger: 'change' }, { validator: validateRuleSequence, trigger: 'change' }],
+    rule2: [{ required: true, message: '请选择第二优先规则', trigger: 'change' }, { validator: validateRuleSequence, trigger: 'change' }],
+    rule3: [{ required: true, message: '请选择第三优先规则', trigger: 'change' }, { validator: validateRuleSequence, trigger: 'change' }]
 }
 
 const loadData = async () => {
@@ -319,6 +417,17 @@ const openAddDialog = async () => {
     dialogVisible.value = true
     await nextTick()
     formRef.value?.clearValidate()
+}
+
+const resetSchedulingForm = () => {
+    Object.assign(schedulingForm, createSchedulingForm())
+}
+
+const openSchedulingDialog = async () => {
+    resetSchedulingForm()
+    schedulingDialogVisible.value = true
+    await nextTick()
+    schedulingFormRef.value?.clearValidate()
 }
 
 const openEditDialog = async (row) => {
@@ -394,6 +503,35 @@ const handleSubmit = async () => {
         await loadData()
     } finally {
         submitLoading.value = false
+    }
+}
+
+const handleRunScheduling = async () => {
+    const valid = await schedulingFormRef.value?.validate().catch(() => false)
+    if (!valid) {
+        return
+    }
+
+    const payload = {
+        SortMode: schedulingForm.sortMode,
+        StartDate: schedulingForm.startDate || null,
+        RuleSequence: schedulingForm.sortMode === '规则优先模式'
+            ? [schedulingForm.rule1, schedulingForm.rule2, schedulingForm.rule3]
+            : []
+    }
+
+    schedulingLoading.value = true
+    try {
+        const result = await proxy.http.post('api/Aps_Schedule_Result/RunProductionScheduling', payload)
+        if (!result?.status) {
+            return proxy.$message.error(result?.message || '排产失败')
+        }
+
+        proxy.$message.success(result.message || '排产成功')
+        schedulingDialogVisible.value = false
+        await loadData()
+    } finally {
+        schedulingLoading.value = false
     }
 }
 
@@ -491,6 +629,10 @@ onMounted(() => {
 
 .dialog-form {
     padding-right: 20px;
+}
+
+.rule-tip {
+    margin-bottom: 18px;
 }
 
 .query-card :deep(.el-card__body) {

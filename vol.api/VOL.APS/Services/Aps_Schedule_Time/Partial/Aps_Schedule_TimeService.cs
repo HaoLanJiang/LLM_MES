@@ -136,7 +136,7 @@ namespace VOL.APS.Services
             DateTime targetDate = scheduleDate.Date;
             DateTime nextDate = targetDate.AddDays(1);
 
-            return _repository.DbContext
+            List<ApsMachineScheduleTimeDetailOutputDto> shiftList = _repository.DbContext
                 .Set<Aps_Schedule_Time>()
                 .AsNoTracking()
                 .Where(x => x.line_code == machineCode
@@ -161,6 +161,66 @@ namespace VOL.APS.Services
                     IsRest = x.status != 1 || x.available_minutes <= 0
                 })
                 .ToList();
+
+            if (shiftList.Count == 0)
+            {
+                return shiftList;
+            }
+
+            DateTime minShiftStart = shiftList
+                .Select(x => DateTime.TryParse(x.StartDateTime, out DateTime value) ? value : (DateTime?)null)
+                .Where(x => x.HasValue)
+                .Select(x => x!.Value)
+                .DefaultIfEmpty(targetDate)
+                .Min();
+
+            DateTime maxShiftEnd = shiftList
+                .Select(x => DateTime.TryParse(x.EndDateTime, out DateTime value) ? value : (DateTime?)null)
+                .Where(x => x.HasValue)
+                .Select(x => x!.Value)
+                .DefaultIfEmpty(nextDate)
+                .Max();
+
+            List<Aps_Schedule_Result> orderList = _repository.DbContext
+                .Set<Aps_Schedule_Result>()
+                .AsNoTracking()
+                .Where(x => x.MachineCode == machineCode
+                    && x.PlanStartTime < maxShiftEnd
+                    && x.PlanEndTime > minShiftStart)
+                .OrderBy(x => x.PlanStartTime)
+                .ToList();
+
+            foreach (ApsMachineScheduleTimeDetailOutputDto shift in shiftList)
+            {
+                if (!DateTime.TryParse(shift.StartDateTime, out DateTime shiftStart)
+                    || !DateTime.TryParse(shift.EndDateTime, out DateTime shiftEnd))
+                {
+                    continue;
+                }
+
+                shift.OrderList = orderList
+                    .Where(x => x.PlanStartTime < shiftEnd && x.PlanEndTime > shiftStart)
+                    .OrderBy(x => x.PlanStartTime)
+                    .Select(x => new ApsMachineScheduleOrderInfoDto
+                    {
+                        Id = x.Id,
+                        WorkOrderId = x.WorkOrderId,
+                        WorkOrderNo = x.WorkOrderNo,
+                        MachineCode = x.MachineCode,
+                        MachineName = x.MachineName,
+                        PlanStartTime = x.PlanStartTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                        PlanEndTime = x.PlanEndTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                        PlanMinutes = x.PlanMinutes,
+                        OrderQty = x.OrderQty,
+                        CustomerName = x.CustomerName,
+                        CustomerPriority = x.CustomerPriority,
+                        ScheduleStatus = x.ScheduleStatus,
+                        Remark = x.Remark
+                    })
+                    .ToList();
+            }
+
+            return shiftList;
         }
 
         /// <summary>

@@ -57,6 +57,7 @@ namespace VOL.APS.Services
                 query = query.Where(x => x.CustomerName.Contains(customerName));
             }
 
+
             if (!string.IsNullOrWhiteSpace(input.ScheduleStatus))
             {
                 string scheduleStatus = input.ScheduleStatus.Trim();
@@ -144,6 +145,7 @@ namespace VOL.APS.Services
                 "待排产",
                 //"排产中", "已排产","已完成"
             };
+            string[] customerLevel = { "一级客户", "二级客户", "三级客户", "四级客户", "五级客户" };
 
             DateTime now = DateTime.Now;
             Random random = new Random();

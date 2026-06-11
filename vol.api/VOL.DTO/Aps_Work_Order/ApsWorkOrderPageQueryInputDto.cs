@@ -3,22 +3,27 @@ using VOL.DTO.BaseDTO;
 namespace VOL.DTO.Aps_Work_Order
 {
     /// <summary>
-    /// 排产工单分页查询入参
+    /// 鎺掍骇宸ュ崟鍒嗛〉鏌ヨ鍏ュ弬
     /// </summary>
     public class ApsWorkOrderPageQueryInputDto : PageQueryBaseDto
     {
         /// <summary>
-        /// 工单号
+        /// 宸ュ崟鍙?
         /// </summary>
         public string? WorkOrderNo { get; set; }
 
         /// <summary>
-        /// 客户名称
+        /// 瀹㈡埛鍚嶇О
         /// </summary>
         public string? CustomerName { get; set; }
 
         /// <summary>
-        /// 排产状态
+        /// 瀹㈡埛绛夌骇
+        /// </summary>
+        public string? CustomerLevel { get; set; }
+
+        /// <summary>
+        /// 鎺掍骇鐘舵€?
         /// </summary>
         public string? ScheduleStatus { get; set; }
     }

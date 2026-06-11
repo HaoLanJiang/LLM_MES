@@ -29,5 +29,36 @@ namespace VOL.DTO.Aps_Schedule_Time
         public int Status { get; set; }
 
         public bool IsRest { get; set; }
+
+        public List<ApsMachineScheduleOrderInfoDto> OrderList { get; set; } = new();
+    }
+
+    public class ApsMachineScheduleOrderInfoDto
+    {
+        public Guid Id { get; set; }
+
+        public Guid WorkOrderId { get; set; }
+
+        public string? WorkOrderNo { get; set; }
+
+        public string? MachineCode { get; set; }
+
+        public string? MachineName { get; set; }
+
+        public string? PlanStartTime { get; set; }
+
+        public string? PlanEndTime { get; set; }
+
+        public int PlanMinutes { get; set; }
+
+        public decimal OrderQty { get; set; }
+
+        public string? CustomerName { get; set; }
+
+        public int? CustomerPriority { get; set; }
+
+        public string? ScheduleStatus { get; set; }
+
+        public string? Remark { get; set; }
     }
 }
