@@ -18,6 +18,10 @@ namespace VOL.APS.Services
     /// </summary>
     public class ProductionSchedulingService : IProductionSchedulingService, IDependency
     {
+        private const int DefaultChangeoverMinutes = 30;
+        private const int TailGapToleranceMinutes = 5;
+        private const decimal QuantityTolerance = 0.0001m;
+
         private readonly IAps_Schedule_ResultRepository _scheduleResultRepository;
         private readonly IAps_Schedule_TimeRepository _scheduleTimeRepository;
         private readonly IAps_Work_OrderRepository _workOrderRepository;
@@ -53,21 +57,26 @@ namespace VOL.APS.Services
             ProductionSchedulingSortMode sortMode = ParseSortMode(input.SortMode);
             List<ProductionSchedulingRule> rules = BuildRuleSequence(input.RuleSequence);
             DateTime now = DateTime.Now;
-            DateTime startBoundary = ((input.StartDate ?? now.Date).Date > now)
-                ? (input.StartDate ?? now.Date).Date
-                : now;
+            // 只要前端明确选择了排产日期，就按该日期 00:00:00 起算；
+            // 未传日期时，才从当前时间开始排，避免把“当天”误截成点击时刻。
+            DateTime startBoundary = input.StartDate?.Date ?? now;
 
-            // 读取未来仍有剩余产能的可用排产时间片。
+            // 读取未来可用的排产时间片，后续会基于保留的排产结果重算占用分钟。
             List<ScheduleTimeSlotState> slotStates = _scheduleTimeRepository
                 .FindAsIQueryable(x => x.enable_flag == 1
                     && x.status == 1
-                    && x.remain_minutes > 0
-                    && x.start_datetime >= startBoundary)
+                    && x.available_minutes > 0
+                    && x.end_datetime > startBoundary)
                 .OrderBy(x => x.schedule_date)
                 .ThenBy(x => x.line_code)
                 .ThenBy(x => x.start_datetime)
                 .ToList()
-                .Select(x => new ScheduleTimeSlotState { Entity = x })
+                .Select(x => new ScheduleTimeSlotState
+                {
+                    Entity = x,
+                    OriginalUsedMinutes = x.used_minutes,
+                    OriginalRemainMinutes = x.remain_minutes
+                })
                 .ToList();
 
             if (slotStates.Count == 0)
@@ -75,9 +84,9 @@ namespace VOL.APS.Services
                 return new WebResponseContent().Error("未找到可用的排产时间");
             }
 
-            // 查询待排产工单，默认排除已完成和已排产工单。
+            // 查询待排产工单，排产前会先清空本次范围内的历史结果，因此这里只排除已完成工单。
             IQueryable<Aps_Work_Order> workOrderQuery = _workOrderRepository
-                .FindAsIQueryable(x => x.ScheduleStatus != "已完成" && x.ScheduleStatus != "已排产");
+                .FindAsIQueryable(x => x.ScheduleStatus != "已完成");
 
             if (input.WorkOrderIds?.Count > 0)
             {
@@ -88,37 +97,100 @@ namespace VOL.APS.Services
                 workOrderQuery = workOrderQuery.Where(x => targetIds.Contains(x.Id));
             }
 
-            List<Aps_Work_Order> workOrders = workOrderQuery.ToList();
-            if (workOrders.Count == 0)
+            List<Aps_Work_Order> candidateWorkOrders = workOrderQuery.ToList();
+            if (candidateWorkOrders.Count == 0)
             {
                 return new WebResponseContent().Error("未找到可排产的工单");
             }
 
-            // 汇总历史已排产分钟数，避免对同一工单重复计算全部工时。
-            HashSet<Guid> workOrderIds = workOrders.Select(x => x.Id).ToHashSet();
-            Dictionary<Guid, int> existingScheduledMinutesMap = _scheduleResultRepository
-                .FindAsIQueryable(x => workOrderIds.Contains(x.WorkOrderId))
-                .GroupBy(x => x.WorkOrderId)
-                .ToDictionary(x => x.Key, x => x.Sum(y => y.PlanMinutes));
+            HashSet<Guid> protectedWorkOrderIds = candidateWorkOrders
+                .Where(x => IsInProductionStatus(x.ScheduleStatus))
+                .Select(x => x.Id)
+                .ToHashSet();
 
-            // 构造工单运行态，计算剩余待排分钟数并解析允许生产的设备集合。
+            List<Aps_Work_Order> workOrders = candidateWorkOrders
+                .Where(x => !protectedWorkOrderIds.Contains(x.Id))
+                .ToList();
+            if (workOrders.Count == 0)
+            {
+                return new WebResponseContent().OK("当前选择的工单均处于生产中，已保留现场排产结果，未执行重排");
+            }
+
+            HashSet<Guid> workOrderIds = workOrders.Select(x => x.Id).ToHashSet();
+            bool clearAllExistingResults = input.WorkOrderIds == null || input.WorkOrderIds.Count == 0;
+            List<Aps_Schedule_Result> scheduleResultsToClear = (clearAllExistingResults
+                    ? _scheduleResultRepository.FindAsIQueryable(x => true)
+                    : _scheduleResultRepository.FindAsIQueryable(x => workOrderIds.Contains(x.WorkOrderId)))
+                .Where(x => !protectedWorkOrderIds.Contains(x.WorkOrderId))
+                .ToList();
+            HashSet<Guid> scheduleResultIdsToClear = scheduleResultsToClear
+                .Select(x => x.Id)
+                .ToHashSet();
+
+            HashSet<string> machineCodes = slotStates
+                .Select(x => (x.Entity.line_code ?? string.Empty).Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            foreach (Aps_Schedule_Result existingSchedule in scheduleResultsToClear)
+            {
+                string machineCode = (existingSchedule.MachineCode ?? string.Empty).Trim();
+                if (!string.IsNullOrWhiteSpace(machineCode))
+                {
+                    machineCodes.Add(machineCode);
+                }
+            }
+
+            List<MachineScheduleSnapshot> retainedMachineSchedules = _scheduleResultRepository
+                .FindAsIQueryable(x => x.MachineCode != null
+                    && x.MachineCode != string.Empty
+                    && !scheduleResultIdsToClear.Contains(x.Id)
+                    && x.PlanEndTime > startBoundary
+                    && machineCodes.Contains(x.MachineCode))
+                .Select(x => new MachineScheduleSnapshot
+                {
+                    MachineCode = x.MachineCode,
+                    PlanStartTime = x.PlanStartTime,
+                    PlanEndTime = x.PlanEndTime
+                })
+                .ToList();
+
+            Dictionary<string, List<TimeRange>> occupiedTimeRangesByMachine = BuildOccupiedTimeRanges(retainedMachineSchedules);
+            ApplySlotUsageBaseline(slotStates, occupiedTimeRangesByMachine);
+
+            Dictionary<string, MachineCapacitySnapshot> machineCapacities = _scheduleResultRepository.DbContext
+                .Set<Aps_Machine>()
+                .Where(x => machineCodes.Contains(x.MachineCode))
+                .ToList()
+                .Select(x => new MachineCapacitySnapshot
+                {
+                    MachineCode = (x.MachineCode ?? string.Empty).Trim(),
+                    MachineName = (x.MachineName ?? string.Empty).Trim(),
+                    // 当前库里没有独立“每小时产能”字段，这里先按每日产能折算小时产能。
+                    HourlyCapacity = x.CapacityMinutesPerDay > 0
+                        ? decimal.Round(x.CapacityMinutesPerDay.Value / 24m, 4, MidpointRounding.AwayFromZero)
+                        : 0m
+                })
+                .Where(x => !string.IsNullOrWhiteSpace(x.MachineCode))
+                .GroupBy(x => x.MachineCode, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+
+            // 构造工单运行态。由于本次会先清掉非生产中工单的旧排产结果，所以这些工单都从完整订单数量重新排。
             List<WorkOrderScheduleState> orderStates = workOrders
                 .Select(x =>
                 {
-                    int existingMinutes = existingScheduledMinutesMap.TryGetValue(x.Id, out int scheduledMinutes)
-                        ? scheduledMinutes
-                        : 0;
-                    int remainingMinutes = Math.Max(x.ProcessMinutes - existingMinutes, 0);
+                    decimal existingScheduledQty = 0m;
+                    decimal remainingQty = ClampQuantity(NormalizeDiscreteQuantity(x.OrderQty));
 
                     return new WorkOrderScheduleState
                     {
                         WorkOrder = x,
-                        ExistingScheduledMinutes = existingMinutes,
-                        RemainingMinutes = remainingMinutes,
+                        ExistingScheduledQty = existingScheduledQty,
+                        RemainingQty = remainingQty,
                         AllowedMachineCodes = ParseMachineCodes(x.RequiredMachine)
                     };
                 })
-                .Where(x => x.RemainingMinutes > 0)
+                .Where(x => x.RemainingQty > QuantityTolerance)
                 .ToList();
 
             if (orderStates.Count == 0)
@@ -130,7 +202,7 @@ namespace VOL.APS.Services
             ApplyComprehensiveScores(orderStates);
 
             // 记录每台设备最近一次生产的换型组，供“同组连续生产优先”规则使用。
-            Dictionary<string, string> lastGroupByMachine = LoadLastGroupByMachine();
+            Dictionary<string, string> lastGroupByMachine = LoadLastGroupByMachine(scheduleResultIdsToClear);
             List<Aps_Schedule_Result> addResults = new List<Aps_Schedule_Result>();
 
             // 逐个时间片为设备分配工单。
@@ -142,14 +214,28 @@ namespace VOL.APS.Services
                     continue;
                 }
 
-                // 当前游标表示该时间片已经排到的时间位置。
-                DateTime cursor = slotState.Entity.start_datetime;
                 while (slotState.RemainingMinutes > 0)
                 {
+                    List<TimeRange> occupiedRanges = GetOccupiedTimeRanges(occupiedTimeRangesByMachine, machineCode);
+                    DateTime cursor = GetNextAvailableCursor(slotState, startBoundary, occupiedRanges);
+                    if (cursor >= slotState.Entity.end_datetime)
+                    {
+                        break;
+                    }
+
+                    DateTime freeWindowEnd = GetFreeWindowEnd(slotState.Entity.end_datetime, cursor, occupiedRanges);
+                    int currentWindowMinutes = Math.Max(0, (int)Math.Floor((freeWindowEnd - cursor).TotalMinutes));
+                    int availableWindowMinutes = Math.Min(slotState.RemainingMinutes, currentWindowMinutes);
+                    if (availableWindowMinutes <= 0)
+                    {
+                        break;
+                    }
+
                     // 先筛出可在当前设备生产、且仍有剩余工时的候选工单。
                     List<WorkOrderScheduleState> machineCandidates = orderStates
-                        .Where(x => x.RemainingMinutes > 0
+                        .Where(x => x.RemainingQty > QuantityTolerance
                             && IsMachineMatched(x, machineCode)
+                            && GetProductionQtyPerMinute(x, GetMachineCapacity(machineCapacities, machineCode)) > 0
                             && x.WorkOrder.EarliestStartTime < slotState.Entity.end_datetime)
                         .ToList();
 
@@ -171,7 +257,49 @@ namespace VOL.APS.Services
                             break;
                         }
 
-                        cursor = nextStartTime > cursor ? nextStartTime : cursor;
+                        string futureLastGroup = lastGroupByMachine.TryGetValue(machineCode, out string? futureGroupValue)
+                            ? futureGroupValue
+                            : string.Empty;
+                        List<WorkOrderScheduleState> nextStartCandidates = machineCandidates
+                            .Where(x => x.WorkOrder.EarliestStartTime == nextStartTime)
+                            .ToList();
+
+                        if (nextStartCandidates.Count > 0)
+                        {
+                            WorkOrderScheduleState futureSelectedOrder = SelectNextOrder(nextStartCandidates, sortMode, rules, futureLastGroup);
+                            int preloadChangeoverMinutes = GetRequiredChangeoverMinutes(futureLastGroup, futureSelectedOrder.WorkOrder.ChangeoverGroup);
+                            int gapMinutes = Math.Max(0, (int)Math.Floor((nextStartTime - cursor).TotalMinutes));
+                            if (preloadChangeoverMinutes > 0
+                                && gapMinutes >= preloadChangeoverMinutes
+                                && availableWindowMinutes >= preloadChangeoverMinutes)
+                            {
+                                DateTime changeoverStartTime = cursor;
+                                DateTime changeoverEndTime = cursor.AddMinutes(preloadChangeoverMinutes);
+                                addResults.Add(BuildChangeoverResult(
+                                    machineCode,
+                                    slotState.Entity.line_name,
+                                    changeoverStartTime,
+                                    changeoverEndTime,
+                                    futureLastGroup,
+                                    futureSelectedOrder.WorkOrder.ChangeoverGroup,
+                                    sortMode,
+                                    rules));
+
+                                slotState.Apply(preloadChangeoverMinutes);
+                                AddOccupiedTimeRange(occupiedRanges, changeoverStartTime, changeoverEndTime);
+
+                                string preparedGroup = (futureSelectedOrder.WorkOrder.ChangeoverGroup ?? string.Empty).Trim();
+                                if (!string.IsNullOrWhiteSpace(preparedGroup))
+                                {
+                                    lastGroupByMachine[machineCode] = preparedGroup;
+                                }
+
+                                slotState.SetCursorFloor(changeoverEndTime);
+                                continue;
+                            }
+                        }
+
+                        slotState.SetCursorFloor(nextStartTime);
                         continue;
                     }
 
@@ -179,15 +307,76 @@ namespace VOL.APS.Services
                         ? groupValue
                         : string.Empty;
 
-                    // 根据排序模式与规则，从当前候选工单中选出最优先的一张工单。
-                    WorkOrderScheduleState selectedOrder = SelectNextOrder(availableNow, sortMode, rules, lastGroup);
+                    MachineCapacitySnapshot? machineCapacity = GetMachineCapacity(machineCapacities, machineCode);
 
-                    // 实际可排分钟数同时受工单剩余工时、时间片剩余分钟和当前时间窗口三重限制。
-                    int windowMinutes = Math.Max(0, (int)Math.Floor((slotState.Entity.end_datetime - cursor).TotalMinutes));
-                    int plannedMinutes = Math.Min(selectedOrder.RemainingMinutes, Math.Min(slotState.RemainingMinutes, windowMinutes));
-                    if (plannedMinutes <= 0)
+                    // 根据排序模式与规则，选择当前窗口里真正能排入的一张工单，尽量避免机器空档。
+                    WorkOrderScheduleState? selectedOrder = SelectFeasibleNextOrder(
+                        availableNow,
+                        sortMode,
+                        rules,
+                        lastGroup,
+                        machineCapacity,
+                        availableWindowMinutes);
+                    if (selectedOrder == null)
                     {
                         break;
+                    }
+
+                    decimal qtyPerMinute = GetProductionQtyPerMinute(selectedOrder, machineCapacity);
+                    if (qtyPerMinute <= 0)
+                    {
+                        break;
+                    }
+
+                    int changeoverMinutes = GetRequiredChangeoverMinutes(lastGroup, selectedOrder.WorkOrder.ChangeoverGroup);
+                    if (changeoverMinutes > 0)
+                    {
+                        if (availableWindowMinutes <= changeoverMinutes)
+                        {
+                            break;
+                        }
+
+                        DateTime changeoverStartTime = cursor;
+                        DateTime changeoverEndTime = cursor.AddMinutes(changeoverMinutes);
+                        addResults.Add(BuildChangeoverResult(
+                            machineCode,
+                            slotState.Entity.line_name,
+                            changeoverStartTime,
+                            changeoverEndTime,
+                            lastGroup,
+                            selectedOrder.WorkOrder.ChangeoverGroup,
+                            sortMode,
+                            rules));
+
+                        slotState.Apply(changeoverMinutes);
+                        AddOccupiedTimeRange(occupiedRanges, changeoverStartTime, changeoverEndTime);
+                        cursor = changeoverEndTime;
+                        freeWindowEnd = GetFreeWindowEnd(slotState.Entity.end_datetime, cursor, occupiedRanges);
+                        currentWindowMinutes = Math.Max(0, (int)Math.Floor((freeWindowEnd - cursor).TotalMinutes));
+                        availableWindowMinutes = Math.Min(slotState.RemainingMinutes, currentWindowMinutes);
+                        if (availableWindowMinutes <= 0)
+                        {
+                            break;
+                        }
+                    }
+
+                    // 先确定优先工单，再按设备产能换算本次可生产数量与所需分钟数。
+                    decimal plannedQty = CalculatePlannedQuantity(selectedOrder.RemainingQty, qtyPerMinute, availableWindowMinutes);
+                    if (plannedQty <= QuantityTolerance)
+                    {
+                        break;
+                    }
+
+                    int plannedMinutes = CalculateRequiredMinutes(plannedQty, qtyPerMinute);
+                    if (plannedMinutes <= 0 || plannedMinutes > availableWindowMinutes)
+                    {
+                        break;
+                    }
+
+                    int tailGapMinutes = availableWindowMinutes - plannedMinutes;
+                    if (tailGapMinutes > 0 && tailGapMinutes <= TailGapToleranceMinutes)
+                    {
+                        plannedMinutes = availableWindowMinutes;
                     }
 
                     // 生成本次排产结果片段，并计算是否延期及延期分钟数。
@@ -208,7 +397,7 @@ namespace VOL.APS.Services
                         PlanStartTime = planStartTime,
                         PlanEndTime = planEndTime,
                         PlanMinutes = plannedMinutes,
-                        OrderQty = selectedOrder.WorkOrder.OrderQty,
+                        OrderQty = plannedQty,
                         CustomerName = selectedOrder.WorkOrder.CustomerName,
                         CustomerPriority = selectedOrder.WorkOrder.CustomerPriority,
                         EarliestStartTime = selectedOrder.WorkOrder.EarliestStartTime,
@@ -222,10 +411,10 @@ namespace VOL.APS.Services
 
                     // 回写运行态，方便继续在后续时间片中接着排剩余工时。
                     addResults.Add(scheduleResult);
-                    selectedOrder.RemainingMinutes -= plannedMinutes;
-                    selectedOrder.ScheduledMinutesThisRun += plannedMinutes;
+                    selectedOrder.RemainingQty = ClampQuantity(selectedOrder.RemainingQty - plannedQty);
+                    selectedOrder.ScheduledQtyThisRun += plannedQty;
                     slotState.Apply(plannedMinutes);
-                    cursor = planEndTime;
+                    AddOccupiedTimeRange(occupiedRanges, planStartTime, planEndTime);
 
                     string changeoverGroup = (selectedOrder.WorkOrder.ChangeoverGroup ?? string.Empty).Trim();
                     if (!string.IsNullOrWhiteSpace(changeoverGroup))
@@ -235,21 +424,12 @@ namespace VOL.APS.Services
                 }
             }
 
-            // 汇总本次真正受到影响的工单，用于后续更新工单状态。
-            List<WorkOrderScheduleState> touchedOrderStates = orderStates
-                .Where(x => x.ScheduledMinutesThisRun > 0
-                    || (x.ExistingScheduledMinutes > 0 && x.RemainingMinutes > 0))
-                .ToList();
-
-            if (addResults.Count == 0)
-            {
-                return new WebResponseContent().OK("未找到满足条件的可排产产能，未生成排产结果", BuildSummary(sortMode, rules, addResults, workOrders.Count, orderStates));
-            }
-
-            // 将本次在内存中占用的分钟数回写到排产时间表。
+            // 将基线回滚和本次新增排产统一回写到排产时间表。
             DateTime updateTime = DateTime.Now;
             List<Aps_Schedule_Time> touchedSlots = slotStates
-                .Where(x => x.PlannedMinutes > 0)
+                .Where(x => x.PlannedMinutes > 0
+                    || x.Entity.used_minutes != x.OriginalUsedMinutes
+                    || x.Entity.remain_minutes != x.OriginalRemainMinutes)
                 .Select(x =>
                 {
                     x.Entity.used_minutes += x.PlannedMinutes;
@@ -259,29 +439,24 @@ namespace VOL.APS.Services
                 })
                 .ToList();
 
-            // 查询并更新本次受影响工单的排产状态。
-            HashSet<Guid> touchedOrderIds = touchedOrderStates
-                .Select(x => x.WorkOrder.Id)
-                .ToHashSet();
-
             Dictionary<Guid, Aps_Work_Order> trackedOrders = _workOrderRepository
-                .FindAsIQueryable(x => touchedOrderIds.Contains(x.Id))
+                .FindAsIQueryable(x => workOrderIds.Contains(x.Id))
                 .ToDictionary(x => x.Id, x => x);
 
-            foreach (WorkOrderScheduleState orderState in touchedOrderStates)
+            foreach (WorkOrderScheduleState orderState in orderStates)
             {
                 if (!trackedOrders.TryGetValue(orderState.WorkOrder.Id, out Aps_Work_Order? orderEntity) || orderEntity == null)
                 {
                     continue;
                 }
 
-                // 按累计已排工时判断工单状态：全部排完为已排产，部分排完为排产中。
-                int totalScheduledMinutes = orderState.ExistingScheduledMinutes + orderState.ScheduledMinutesThisRun;
-                if (totalScheduledMinutes >= orderEntity.ProcessMinutes)
+                // 按累计已排数量判断工单状态：全部排完为已排产，部分排完为排产中。
+                decimal totalScheduledQty = orderState.ExistingScheduledQty + orderState.ScheduledQtyThisRun;
+                if (totalScheduledQty >= orderEntity.OrderQty - QuantityTolerance)
                 {
                     orderEntity.ScheduleStatus = "已排产";
                 }
-                else if (totalScheduledMinutes > 0)
+                else if (totalScheduledQty > QuantityTolerance)
                 {
                     orderEntity.ScheduleStatus = "排产中";
                 }
@@ -296,6 +471,11 @@ namespace VOL.APS.Services
             // 在同一事务中统一提交排产结果、时间片占用和工单状态更新，避免数据不一致。
             return _scheduleResultRepository.DbContextBeginTransaction(() =>
             {
+                if (scheduleResultsToClear.Count > 0)
+                {
+                    _scheduleResultRepository.DbContext.Set<Aps_Schedule_Result>().RemoveRange(scheduleResultsToClear);
+                }
+
                 _scheduleResultRepository.AddRange(addResults);
                 if (touchedSlots.Count > 0)
                 {
@@ -308,7 +488,10 @@ namespace VOL.APS.Services
                 }
 
                 _scheduleResultRepository.SaveChanges();
-                return new WebResponseContent().OK("排产完成", BuildSummary(sortMode, rules, addResults, workOrders.Count, orderStates));
+                string message = addResults.Count > 0
+                    ? "排产完成"
+                    : "已清空可重排的旧排产结果，但本次未找到满足条件的可排产产能";
+                return new WebResponseContent().OK(message, BuildSummary(sortMode, rules, addResults, workOrders.Count, orderStates));
             });
         }
 
@@ -316,12 +499,13 @@ namespace VOL.APS.Services
         /// 读取每台设备最近一次排产对应的换型组。
         /// </summary>
         /// <returns>设备编码与最近一次换型组的映射。</returns>
-        private Dictionary<string, string> LoadLastGroupByMachine()
+        private Dictionary<string, string> LoadLastGroupByMachine(HashSet<Guid> excludedScheduleResultIds)
         {
             // 先按排产结束时间倒序查询，再为每台设备保留最近一条记录。
             List<MachineGroupSnapshot> snapshots = (from result in _scheduleResultRepository.FindAsIQueryable(x => !string.IsNullOrWhiteSpace(x.MachineCode))
                                                     join workOrder in _workOrderRepository.FindAsIQueryable(x => true)
                                                         on result.WorkOrderId equals workOrder.Id
+                                                    where !excludedScheduleResultIds.Contains(result.Id)
                                                     orderby result.PlanEndTime descending
                                                     select new MachineGroupSnapshot
                                                     {
@@ -347,6 +531,53 @@ namespace VOL.APS.Services
         }
 
         /// <summary>
+        /// 从候选工单中选出当前窗口里可以实际排入的最优先工单。
+        /// </summary>
+        private static WorkOrderScheduleState? SelectFeasibleNextOrder(
+            List<WorkOrderScheduleState> candidates,
+            ProductionSchedulingSortMode sortMode,
+            List<ProductionSchedulingRule> rules,
+            string lastGroup,
+            MachineCapacitySnapshot? machineCapacity,
+            int availableWindowMinutes)
+        {
+            if (candidates.Count == 0 || availableWindowMinutes <= 0)
+            {
+                return null;
+            }
+
+            candidates.Sort((left, right) => CompareOrder(left, right, sortMode, rules, lastGroup));
+            foreach (WorkOrderScheduleState candidate in candidates)
+            {
+                decimal qtyPerMinute = GetProductionQtyPerMinute(candidate, machineCapacity);
+                if (qtyPerMinute <= 0)
+                {
+                    continue;
+                }
+
+                int changeoverMinutes = GetRequiredChangeoverMinutes(lastGroup, candidate.WorkOrder.ChangeoverGroup);
+                if (availableWindowMinutes <= changeoverMinutes)
+                {
+                    continue;
+                }
+
+                int maxProductionMinutes = availableWindowMinutes - changeoverMinutes;
+                if (maxProductionMinutes <= 0)
+                {
+                    continue;
+                }
+
+                decimal maxSchedulableQty = CalculatePlannedQuantity(candidate.RemainingQty, qtyPerMinute, maxProductionMinutes);
+                if (maxSchedulableQty > QuantityTolerance)
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// 从候选工单中选出当前最优先的工单。
         /// </summary>
         /// <param name="candidates">候选工单集合。</param>
@@ -363,6 +594,317 @@ namespace VOL.APS.Services
             // 统一使用比较器排序，排序后的第一个元素即当前应优先排产的工单。
             candidates.Sort((left, right) => CompareOrder(left, right, sortMode, rules, lastGroup));
             return candidates[0];
+        }
+
+        /// <summary>
+        /// 根据当前表结构折算设备产能下的每分钟产量。
+        /// </summary>
+        private static decimal GetProductionQtyPerMinute(WorkOrderScheduleState orderState, MachineCapacitySnapshot? machineCapacity)
+        {
+            return GetProductionQtyPerMinute(orderState.WorkOrder, machineCapacity);
+        }
+
+        /// <summary>
+        /// 根据当前表结构折算设备产能下的每分钟产量。
+        /// </summary>
+        private static decimal GetProductionQtyPerMinute(Aps_Work_Order workOrder, MachineCapacitySnapshot? machineCapacity)
+        {
+            if (machineCapacity != null && machineCapacity.HourlyCapacity > 0)
+            {
+                return machineCapacity.HourlyCapacity / 60m;
+            }
+
+            if (workOrder.ProcessMinutes > 0 && workOrder.OrderQty > 0)
+            {
+                return workOrder.OrderQty / workOrder.ProcessMinutes;
+            }
+
+            return 0m;
+        }
+
+        /// <summary>
+        /// 读取设备产能快照。
+        /// </summary>
+        private static MachineCapacitySnapshot? GetMachineCapacity(
+            Dictionary<string, MachineCapacitySnapshot> machineCapacities,
+            string machineCode)
+        {
+            string normalizedMachineCode = (machineCode ?? string.Empty).Trim();
+            return machineCapacities.TryGetValue(normalizedMachineCode, out MachineCapacitySnapshot? machineCapacity)
+                ? machineCapacity
+                : null;
+        }
+
+        /// <summary>
+        /// 计算排完剩余数量至少需要多少分钟。
+        /// </summary>
+        private static int CalculateRequiredMinutes(decimal remainingQty, decimal qtyPerMinute)
+        {
+            if (remainingQty <= QuantityTolerance || qtyPerMinute <= 0)
+            {
+                return 0;
+            }
+
+            return Math.Max(1, (int)decimal.Ceiling(remainingQty / qtyPerMinute));
+        }
+
+        /// <summary>
+        /// 计算本次排产分钟数下可完成的数量。
+        /// </summary>
+        private static decimal CalculatePlannedQuantity(decimal remainingQty, decimal qtyPerMinute, int plannedMinutes)
+        {
+            if (remainingQty <= QuantityTolerance || qtyPerMinute <= 0 || plannedMinutes <= 0)
+            {
+                return 0m;
+            }
+
+            decimal wholeRemainingQty = NormalizeDiscreteQuantity(remainingQty);
+            if (wholeRemainingQty <= 0)
+            {
+                return 0m;
+            }
+
+            decimal producedQty = decimal.Floor(qtyPerMinute * plannedMinutes);
+            if (producedQty <= 0)
+            {
+                return 0m;
+            }
+
+            return producedQty >= wholeRemainingQty
+                ? wholeRemainingQty
+                : producedQty;
+        }
+
+        /// <summary>
+        /// 计算是否需要插入清厂时间。
+        /// </summary>
+        private static int GetRequiredChangeoverMinutes(string currentGroup, string nextGroup)
+        {
+            string normalizedCurrentGroup = (currentGroup ?? string.Empty).Trim();
+            string normalizedNextGroup = (nextGroup ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalizedCurrentGroup)
+                || string.IsNullOrWhiteSpace(normalizedNextGroup)
+                || string.Equals(normalizedCurrentGroup, normalizedNextGroup, StringComparison.OrdinalIgnoreCase))
+            {
+                return 0;
+            }
+
+            return DefaultChangeoverMinutes;
+        }
+
+        /// <summary>
+        /// 构造清厂排产结果。
+        /// </summary>
+        private static Aps_Schedule_Result BuildChangeoverResult(
+            string machineCode,
+            string machineName,
+            DateTime planStartTime,
+            DateTime planEndTime,
+            string currentGroup,
+            string nextGroup,
+            ProductionSchedulingSortMode sortMode,
+            List<ProductionSchedulingRule> rules)
+        {
+            Aps_Schedule_Result changeoverResult = new Aps_Schedule_Result
+            {
+                Id = Guid.NewGuid(),
+                WorkOrderId = Guid.Empty,
+                WorkOrderNo = "清厂",
+                MachineCode = machineCode,
+                MachineName = machineName,
+                PlanStartTime = planStartTime,
+                PlanEndTime = planEndTime,
+                PlanMinutes = Math.Max(1, (int)Math.Ceiling((planEndTime - planStartTime).TotalMinutes)),
+                OrderQty = 0m,
+                IsDelay = 0,
+                DelayMinutes = 0,
+                ScheduleStatus = "清厂",
+                Remark = $"{BuildResultRemark(sortMode, rules)}; 清厂: {(currentGroup ?? string.Empty).Trim()} -> {(nextGroup ?? string.Empty).Trim()}"
+            };
+            changeoverResult.SetCreateDefaultVal();
+            return changeoverResult;
+        }
+
+        /// <summary>
+        /// 对数量做统一截断，避免小数精度导致出现负数。
+        /// </summary>
+        private static decimal ClampQuantity(decimal quantity)
+        {
+            return quantity <= QuantityTolerance ? 0m : decimal.Round(quantity, 4, MidpointRounding.AwayFromZero);
+        }
+
+        /// <summary>
+        /// 将排产数量统一归整为整件，避免结果出现小数拆分。
+        /// </summary>
+        private static decimal NormalizeDiscreteQuantity(decimal quantity)
+        {
+            return quantity <= QuantityTolerance
+                ? 0m
+                : decimal.Round(quantity, 0, MidpointRounding.AwayFromZero);
+        }
+
+        /// <summary>
+        /// 判断工单是否处于现场正在生产的状态。
+        /// 这类工单不参与自动清理，避免影响现场执行。
+        /// </summary>
+        private static bool IsInProductionStatus(string scheduleStatus)
+        {
+            string normalizedStatus = NormalizeKey(scheduleStatus);
+            return normalizedStatus is "生产中" or "开工中" or "已开工" or "加工中" or "执行中" or "在制";
+        }
+
+        /// <summary>
+        /// 根据保留的排产结果，重算未来时间片的已使用和剩余分钟数。
+        /// </summary>
+        private static void ApplySlotUsageBaseline(
+            List<ScheduleTimeSlotState> slotStates,
+            Dictionary<string, List<TimeRange>> occupiedTimeRangesByMachine)
+        {
+            foreach (ScheduleTimeSlotState slotState in slotStates)
+            {
+                string machineCode = (slotState.Entity.line_code ?? string.Empty).Trim();
+                List<TimeRange> occupiedRanges = GetOccupiedTimeRanges(occupiedTimeRangesByMachine, machineCode);
+                int usedMinutes = CalculateOccupiedMinutes(
+                    slotState.Entity.start_datetime,
+                    slotState.Entity.end_datetime,
+                    occupiedRanges);
+
+                slotState.Entity.used_minutes = usedMinutes;
+                slotState.Entity.remain_minutes = Math.Max(slotState.Entity.available_minutes - usedMinutes, 0);
+                slotState.PlannedMinutes = 0;
+                slotState.CursorFloor = null;
+            }
+        }
+
+        /// <summary>
+        /// 构造每台设备的已占用时间轴。
+        /// </summary>
+        private static Dictionary<string, List<TimeRange>> BuildOccupiedTimeRanges(List<MachineScheduleSnapshot> schedules)
+        {
+            Dictionary<string, List<TimeRange>> occupiedTimeRanges = new Dictionary<string, List<TimeRange>>(StringComparer.OrdinalIgnoreCase);
+            foreach (MachineScheduleSnapshot schedule in schedules)
+            {
+                string machineCode = (schedule.MachineCode ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(machineCode) || schedule.PlanEndTime <= schedule.PlanStartTime)
+                {
+                    continue;
+                }
+
+                List<TimeRange> machineRanges = GetOccupiedTimeRanges(occupiedTimeRanges, machineCode);
+                AddOccupiedTimeRange(machineRanges, schedule.PlanStartTime, schedule.PlanEndTime);
+            }
+
+            return occupiedTimeRanges;
+        }
+
+        /// <summary>
+        /// 获取设备已占用时间集合。
+        /// </summary>
+        private static List<TimeRange> GetOccupiedTimeRanges(
+            Dictionary<string, List<TimeRange>> occupiedTimeRangesByMachine,
+            string machineCode)
+        {
+            string normalizedMachineCode = (machineCode ?? string.Empty).Trim();
+            if (!occupiedTimeRangesByMachine.TryGetValue(normalizedMachineCode, out List<TimeRange>? occupiedRanges))
+            {
+                occupiedRanges = new List<TimeRange>();
+                occupiedTimeRangesByMachine[normalizedMachineCode] = occupiedRanges;
+            }
+
+            return occupiedRanges;
+        }
+
+        /// <summary>
+        /// 将新的占用区间合并进设备时间轴。
+        /// </summary>
+        private static void AddOccupiedTimeRange(List<TimeRange> occupiedRanges, DateTime startTime, DateTime endTime)
+        {
+            if (endTime <= startTime)
+            {
+                return;
+            }
+
+            occupiedRanges.Add(new TimeRange
+            {
+                StartTime = startTime,
+                EndTime = endTime
+            });
+
+            occupiedRanges.Sort((left, right) => DateTime.Compare(left.StartTime, right.StartTime));
+            for (int index = 0; index < occupiedRanges.Count - 1;)
+            {
+                TimeRange currentRange = occupiedRanges[index];
+                TimeRange nextRange = occupiedRanges[index + 1];
+                if (currentRange.EndTime < nextRange.StartTime)
+                {
+                    index++;
+                    continue;
+                }
+
+                currentRange.EndTime = currentRange.EndTime >= nextRange.EndTime
+                    ? currentRange.EndTime
+                    : nextRange.EndTime;
+                occupiedRanges.RemoveAt(index + 1);
+            }
+        }
+
+        /// <summary>
+        /// 找到当前时间片内、且不与已有结果重叠的下一个可排时间。
+        /// </summary>
+        private static DateTime GetNextAvailableCursor(
+            ScheduleTimeSlotState slotState,
+            DateTime startBoundary,
+            List<TimeRange> occupiedRanges)
+        {
+            DateTime cursor = slotState.GetCursor(startBoundary);
+            while (cursor < slotState.Entity.end_datetime)
+            {
+                TimeRange? overlapRange = occupiedRanges.FirstOrDefault(x => x.StartTime < cursor.AddTicks(1) && x.EndTime > cursor);
+                if (overlapRange == null)
+                {
+                    return cursor;
+                }
+
+                cursor = overlapRange.EndTime;
+            }
+
+            return slotState.Entity.end_datetime;
+        }
+
+        /// <summary>
+        /// 获取当前位置到下一个占用区间前的连续空档结束时间。
+        /// </summary>
+        private static DateTime GetFreeWindowEnd(DateTime slotEndTime, DateTime cursor, List<TimeRange> occupiedRanges)
+        {
+            TimeRange? nextRange = occupiedRanges
+                .Where(x => x.StartTime > cursor)
+                .OrderBy(x => x.StartTime)
+                .FirstOrDefault();
+            if (nextRange == null || nextRange.StartTime >= slotEndTime)
+            {
+                return slotEndTime;
+            }
+
+            return nextRange.StartTime;
+        }
+
+        /// <summary>
+        /// 计算时间片内已被历史结果占用的分钟数。
+        /// </summary>
+        private static int CalculateOccupiedMinutes(DateTime slotStartTime, DateTime slotEndTime, List<TimeRange> occupiedRanges)
+        {
+            double occupiedMinutes = occupiedRanges
+                .Where(x => x.EndTime > slotStartTime && x.StartTime < slotEndTime)
+                .Sum(x =>
+                {
+                    DateTime overlapStart = x.StartTime > slotStartTime ? x.StartTime : slotStartTime;
+                    DateTime overlapEnd = x.EndTime < slotEndTime ? x.EndTime : slotEndTime;
+                    return overlapEnd > overlapStart
+                        ? (overlapEnd - overlapStart).TotalMinutes
+                        : 0d;
+                });
+
+            return Math.Max(0, (int)Math.Round(occupiedMinutes, MidpointRounding.AwayFromZero));
         }
 
         /// <summary>
@@ -666,9 +1208,9 @@ namespace VOL.APS.Services
             int totalWorkOrderCount,
             List<WorkOrderScheduleState> orderStates)
         {
-            int fullyScheduledOrderCount = orderStates.Count(x => x.RemainingMinutes <= 0);
-            int partialScheduledOrderCount = orderStates.Count(x => x.RemainingMinutes > 0 && x.ExistingScheduledMinutes + x.ScheduledMinutesThisRun > 0);
-            int unscheduledOrderCount = orderStates.Count(x => x.ExistingScheduledMinutes + x.ScheduledMinutesThisRun == 0);
+            int fullyScheduledOrderCount = orderStates.Count(x => x.RemainingQty <= QuantityTolerance);
+            int partialScheduledOrderCount = orderStates.Count(x => x.RemainingQty > QuantityTolerance && x.ExistingScheduledQty + x.ScheduledQtyThisRun > QuantityTolerance);
+            int unscheduledOrderCount = orderStates.Count(x => x.ExistingScheduledQty + x.ScheduledQtyThisRun <= QuantityTolerance);
 
             // 汇总工单排产完成度、排产片段数量、受影响设备和日期等信息，供前端展示。
             return new
@@ -677,12 +1219,14 @@ namespace VOL.APS.Services
                 ruleSequence = rules.Select(GetRuleDisplayName).ToList(),
                 totalWorkOrderCount,
                 candidateWorkOrderCount = orderStates.Count,
-                scheduledWorkOrderCount = orderStates.Count(x => x.ScheduledMinutesThisRun > 0),
+                scheduledWorkOrderCount = orderStates.Count(x => x.ScheduledQtyThisRun > QuantityTolerance),
                 fullyScheduledOrderCount,
                 partialScheduledOrderCount,
                 unscheduledOrderCount,
                 scheduledSegmentCount = results.Count,
                 totalPlannedMinutes = results.Sum(x => x.PlanMinutes),
+                totalPlannedQty = results.Where(x => x.WorkOrderId != Guid.Empty).Sum(x => x.OrderQty),
+                changeoverSegmentCount = results.Count(x => x.ScheduleStatus == "清厂"),
                 affectedMachineCount = results.Select(x => x.MachineCode).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Count(),
                 affectedScheduleDayCount = results.Select(x => x.PlanStartTime.Date).Distinct().Count()
             };
@@ -731,11 +1275,11 @@ namespace VOL.APS.Services
         {
             public Aps_Work_Order WorkOrder { get; set; } = null!;
 
-            public int ExistingScheduledMinutes { get; set; }
+            public decimal ExistingScheduledQty { get; set; }
 
-            public int RemainingMinutes { get; set; }
+            public decimal RemainingQty { get; set; }
 
-            public int ScheduledMinutesThisRun { get; set; }
+            public decimal ScheduledQtyThisRun { get; set; }
 
             public double ComprehensiveScore { get; set; }
 
@@ -746,10 +1290,48 @@ namespace VOL.APS.Services
         {
             public Aps_Schedule_Time Entity { get; set; } = null!;
 
+            public int OriginalUsedMinutes { get; set; }
+
+            public int OriginalRemainMinutes { get; set; }
+
             public int PlannedMinutes { get; set; }
+
+            public DateTime? CursorFloor { get; set; }
 
             // 动态剩余分钟数 = 原始剩余分钟数 - 本次排产过程中已经分配出去的分钟数。
             public int RemainingMinutes => Math.Max(Entity.remain_minutes - PlannedMinutes, 0);
+
+            /// <summary>
+            /// 获取当前时间片真正还能继续排产的起始时间。
+            /// </summary>
+            public DateTime GetCursor(DateTime startBoundary)
+            {
+                DateTime cursor = Entity.start_datetime.AddMinutes(Entity.used_minutes + PlannedMinutes);
+                if (CursorFloor.HasValue && CursorFloor.Value > cursor)
+                {
+                    cursor = CursorFloor.Value;
+                }
+
+                if (cursor < startBoundary)
+                {
+                    cursor = startBoundary;
+                }
+
+                return cursor > Entity.end_datetime ? Entity.end_datetime : cursor;
+            }
+
+            /// <summary>
+            /// 将当前时间片的排产游标推进到指定时间。
+            /// </summary>
+            public void SetCursorFloor(DateTime cursor)
+            {
+                DateTime normalizedCursor = cursor < Entity.start_datetime
+                    ? Entity.start_datetime
+                    : cursor;
+                CursorFloor = normalizedCursor > Entity.end_datetime
+                    ? Entity.end_datetime
+                    : normalizedCursor;
+            }
 
             /// <summary>
             /// 为当前时间片累加已分配的分钟数。
@@ -766,6 +1348,31 @@ namespace VOL.APS.Services
             public string MachineCode { get; set; } = string.Empty;
 
             public string ChangeoverGroup { get; set; } = string.Empty;
+        }
+
+        private sealed class MachineCapacitySnapshot
+        {
+            public string MachineCode { get; set; } = string.Empty;
+
+            public string MachineName { get; set; } = string.Empty;
+
+            public decimal HourlyCapacity { get; set; }
+        }
+
+        private sealed class MachineScheduleSnapshot
+        {
+            public string MachineCode { get; set; } = string.Empty;
+
+            public DateTime PlanStartTime { get; set; }
+
+            public DateTime PlanEndTime { get; set; }
+        }
+
+        private sealed class TimeRange
+        {
+            public DateTime StartTime { get; set; }
+
+            public DateTime EndTime { get; set; }
         }
     }
 }
