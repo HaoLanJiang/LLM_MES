@@ -227,6 +227,10 @@ let viewgird = [
         path: '/ProductionEquipmentManagement',
         name: 'ProductionEquipmentManagement',
         component: () => import('@/views/aps/ProductionEquipmentManagement.vue')
+    },{
+        path: '/Gannt',
+        name: 'Gannt',
+        component: () => import('@/views/aps/Gannt.vue')
     }]
 
 //上面的demo、MES开头的都是示例菜单，可以任意删除 
