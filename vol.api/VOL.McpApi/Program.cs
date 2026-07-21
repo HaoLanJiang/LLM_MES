@@ -35,6 +35,7 @@ builder.Configuration
     .AddEnvironmentVariables();
 
 builder.Services.AddModule(builder.Configuration);
+builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
 
 builder.Services
