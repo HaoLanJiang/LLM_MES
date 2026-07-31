@@ -13,6 +13,11 @@ namespace VOL.DTO.Aps_Schedule_Result
         public Guid Id { get; set; }
 
         /// <summary>
+        /// 用户ID（排产结果创建人ID）
+        /// </summary>
+        public int? UserId { get; set; }
+
+        /// <summary>
         /// 工单ID
         /// </summary>
         public Guid WorkOrderId { get; set; }

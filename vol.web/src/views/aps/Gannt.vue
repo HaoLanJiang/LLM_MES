@@ -6,6 +6,15 @@
             </template>
 
             <el-form :model="queryForm" inline label-width="100px">
+                <el-form-item label="用户ID">
+                    <el-input-number
+                        v-model="queryForm.userId"
+                        :min="1"
+                        :precision="0"
+                        controls-position="right"
+                        placeholder="请输入用户ID"
+                    />
+                </el-form-item>
                 <el-form-item label="开始日期">
                     <el-date-picker
                         v-model="queryForm.startDate"
@@ -119,6 +128,7 @@
                     <div class="gantt-container" :style="{ width: containerWidth }">
                         <div class="gantt-header">
                             <div class="fixed-cols-header">
+                                <div class="col-item w-90">用户ID</div>
                                 <div class="col-item w-140">设备编码</div>
                                 <div class="col-item w-160">设备名称</div>
                             </div>
@@ -142,6 +152,7 @@
                         <div v-if="lines.length" ref="ganttBody" class="gantt-body">
                             <div v-for="line in lines" :key="line.id" class="gantt-row">
                                 <div class="fixed-cols">
+                                    <div class="col-item w-90 code-cell">{{ line.userId ?? '-' }}</div>
                                     <div class="col-item w-140 code-cell">{{ line.code || '-' }}</div>
                                     <div class="col-item w-160 name-cell">{{ line.name || '-' }}</div>
                                 </div>
@@ -314,7 +325,7 @@ import { computed, getCurrentInstance, onBeforeUnmount, onMounted, reactive, ref
 
 const { proxy } = getCurrentInstance()
 
-const FIXED_COLS_WIDTH = 300
+const FIXED_COLS_WIDTH = 390
 const HOUR_PX = 28
 const DAY_PX = HOUR_PX * 24
 const ROW_HEIGHT = 76
@@ -340,9 +351,11 @@ const baseDate = ref(null)
 const snapshot = ref(null)
 const dirtyTaskIds = ref([])
 const sourceRowMap = ref({})
+const loadRequestId = ref(0)
 
 const queryForm = reactive({
     startDate: formatDateOnly(new Date()),
+    userId: null,
     workOrderNo: '',
     machineCode: '',
     machineName: '',
@@ -525,10 +538,15 @@ function buildDateAxis(startDate, maxTime) {
     return axis
 }
 
+function getRowUserId(row) {
+    return row.UserId ?? row.userId ?? null
+}
+
 function buildLineId(row, index) {
+    const userId = getRowUserId(row) ?? ''
     const code = String(row.MachineCode || row.machineCode || '').trim()
     const name = String(row.MachineName || row.machineName || '').trim()
-    return `machine-${code || name || index}`
+    return `user-${userId}-machine-${code || name || index}`
 }
 
 function buildGanttData(rows) {
@@ -558,6 +576,7 @@ function buildGanttData(rows) {
             lineMap[lineId] = true
             normalizedLines.push({
                 id: lineId,
+                userId: getRowUserId(row),
                 code: row.MachineCode || '',
                 name: row.MachineName || '',
                 raw: row
@@ -576,6 +595,7 @@ function buildGanttData(rows) {
 
         normalizedTasks.push({
             id: row.Id,
+            userId: getRowUserId(row),
             lineId,
             machineCode: row.MachineCode || '',
             machineName: row.MachineName || '',
@@ -620,6 +640,7 @@ function buildGanttData(rows) {
     const baseMs = axisBaseDate.getTime()
     tasks.value = normalizedTasks.map((task) => ({
         id: task.id,
+        userId: task.userId,
         lineId: task.lineId,
         machineCode: task.machineCode,
         machineName: task.machineName,
@@ -635,7 +656,21 @@ function buildGanttData(rows) {
     dirtyTaskIds.value = []
 }
 
+function clearGanttData() {
+    lines.value = []
+    tasks.value = []
+    dates.value = []
+    baseDate.value = null
+    sourceRowMap.value = {}
+    snapshot.value = null
+    dirtyTaskIds.value = []
+    resetContextMenu()
+    resetDragState()
+}
+
 async function loadData(showSuccessMessage = false) {
+    const requestId = ++loadRequestId.value
+    clearGanttData()
     loading.value = true
     try {
         const result = await proxy.http.post('api/Aps_Schedule_Result/GetScheduleResultPageList', {
@@ -643,10 +678,15 @@ async function loadData(showSuccessMessage = false) {
             Rows: 9999,
             Sort: 'PlanStartTime',
             Order: 'asc',
+            UserId: queryForm.userId,
             WorkOrderNo: queryForm.workOrderNo,
             MachineCode: queryForm.machineCode,
             ScheduleStatus: queryForm.scheduleStatus
         })
+
+        if (requestId !== loadRequestId.value) {
+            return
+        }
 
         let rows = result?.rows || []
 
@@ -661,7 +701,9 @@ async function loadData(showSuccessMessage = false) {
             proxy.$message.success('查询成功')
         }
     } finally {
-        loading.value = false
+        if (requestId === loadRequestId.value) {
+            loading.value = false
+        }
     }
 }
 
@@ -692,6 +734,7 @@ async function handleReset() {
     }
 
     queryForm.startDate = formatDateOnly(new Date())
+    queryForm.userId = null
     queryForm.workOrderNo = ''
     queryForm.machineCode = ''
     queryForm.machineName = ''
@@ -1345,7 +1388,7 @@ onBeforeUnmount(() => {
 }
 
 .fixed-cols-header {
-    width: 300px;
+    width: 390px;
     display: flex;
     flex-shrink: 0;
     background: rgba(11, 34, 63, 0.3);
@@ -1394,7 +1437,7 @@ onBeforeUnmount(() => {
 .fixed-cols {
     position: sticky;
     left: 0;
-    width: 300px;
+    width: 390px;
     display: flex;
     flex-shrink: 0;
     background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
@@ -1415,6 +1458,10 @@ onBeforeUnmount(() => {
 
 .w-140 {
     width: 140px;
+}
+
+.w-90 {
+    width: 90px;
 }
 
 .w-160 {

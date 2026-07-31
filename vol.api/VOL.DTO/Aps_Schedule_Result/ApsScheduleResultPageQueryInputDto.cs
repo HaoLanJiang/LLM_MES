@@ -8,6 +8,11 @@ namespace VOL.DTO.Aps_Schedule_Result
     public class ApsScheduleResultPageQueryInputDto : PageQueryBaseDto
     {
         /// <summary>
+        /// 用户ID（排产结果创建人ID）
+        /// </summary>
+        public int? UserId { get; set; }
+
+        /// <summary>
         /// 工单号
         /// </summary>
         public string? WorkOrderNo { get; set; }

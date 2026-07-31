@@ -44,6 +44,11 @@ namespace VOL.APS.Services
                 .Set<Aps_Schedule_Result>()
                 .AsNoTracking();
 
+            if (input.UserId.HasValue && input.UserId.Value > 0)
+            {
+                query = query.Where(x => x.CreateID == input.UserId.Value);
+            }
+
             if (!string.IsNullOrWhiteSpace(input.WorkOrderNo))
             {
                 string workOrderNo = input.WorkOrderNo.Trim();
@@ -72,6 +77,7 @@ namespace VOL.APS.Services
                 "planstarttime" => isDesc ? query.OrderByDescending(x => x.PlanStartTime) : query.OrderBy(x => x.PlanStartTime),
                 "planendtime" => isDesc ? query.OrderByDescending(x => x.PlanEndTime) : query.OrderBy(x => x.PlanEndTime),
                 "schedulestatus" => isDesc ? query.OrderByDescending(x => x.ScheduleStatus) : query.OrderBy(x => x.ScheduleStatus),
+                "userid" => isDesc ? query.OrderByDescending(x => x.CreateID) : query.OrderBy(x => x.CreateID),
                 _ => isDesc ? query.OrderByDescending(x => x.WorkOrderNo) : query.OrderBy(x => x.WorkOrderNo)
             };
 
@@ -81,6 +87,7 @@ namespace VOL.APS.Services
                 .Select(x => new ApsScheduleResultPageOutputDto
                 {
                     Id = x.Id,
+                    UserId = x.CreateID,
                     WorkOrderId = x.WorkOrderId,
                     WorkOrderNo = x.WorkOrderNo,
                     MachineCode = x.MachineCode,
