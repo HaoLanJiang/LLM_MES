@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Text.Json;
-using Microsoft.AspNetCore.Authorization;
 using ModelContextProtocol.Server;
 using VOL.APS.IServices;
 using VOL.DTO.Aps_Schedule_Result;
@@ -12,7 +11,6 @@ namespace VOL.McpApi.Tools;
 /// no scheduling rules; all domain behavior remains in VOL.APS services.
 /// </summary>
 [McpServerToolType]
-[Authorize]
 public sealed class ApsSchedulingTools
 {
     [McpServerTool(

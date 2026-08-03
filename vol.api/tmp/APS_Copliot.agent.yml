@@ -1,0 +1,207 @@
+app:
+  description: ''
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  icon_type: emoji
+  mode: workflow
+  name: APS_Copliot
+  use_icon_as_answer_icon: false
+dependencies: []
+kind: app
+version: 0.6.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        attachment_image_file_size_limit: 2
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        file_upload_limit: 20
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        single_chunk_attachment_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInLoop: false
+        sourceType: start
+        targetType: agent
+      id: 1784370559011-source-1784798006126-target
+      source: '1784370559011'
+      sourceHandle: source
+      target: '1784798006126'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: agent
+        targetType: end
+      id: 1784798006126-source-1784798628632-target
+      source: '1784798006126'
+      sourceHandle: source
+      target: '1784798628632'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        selected: false
+        title: 用户输入
+        type: start
+        variables:
+        - default: ''
+          hint: ''
+          label: query排产查询问题
+          options: []
+          placeholder: ''
+          required: true
+          type: text-input
+          variable: query
+      height: 108
+      id: '1784370559011'
+      position:
+        x: 665.8633264507114
+        y: 255.54165622480656
+      positionAbsolute:
+        x: 665.8633264507114
+        y: 255.54165622480656
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        agent_parameters:
+          instruction:
+            type: constant
+            value: 你是 APS 查询助手。请先理解用户问题，再从 MCP 服务提供的工具中自主选择最合适的工具并调用：询问设备每日产能时使用 aps_list_machines；询问工单、设备排产结果时使用
+              aps_get_schedule_results。提取设备编码、工单号和排产状态等参数；不需要工具时不要调用。只能依据工具返回的数据回答，不能编造或输出未替换的占位符。最终用简洁自然的中文回复。
+          mcp_server:
+            type: constant
+            value: http://host.docker.internal:9992/mcp/sse
+          model:
+            type: constant
+            value:
+              completion_params: {}
+              mode: chat
+              model: deepseek-v4-flash
+              model_type: llm
+              provider: langgenius/deepseek/deepseek
+              type: model-selector
+          query:
+            type: constant
+            value: '{{#1784370559011.query#}}'
+          tools:
+            type: constant
+            value:
+            - enabled: true
+              extra:
+                description: 一个用于获取当前时间的工具。
+              parameters: {}
+              provider_name: time
+              provider_show_name: time
+              settings:
+                format:
+                  value:
+                    type: mixed
+                    value: '%Y-%m-%d %H:%M:%S'
+                timezone:
+                  value:
+                    type: constant
+                    value: UTC
+              tool_description: 一个用于获取当前时间的工具。
+              tool_label: 获取当前时间
+              tool_name: current_time
+              type: builtin
+        agent_strategy_label: MCP FunctionCalling
+        agent_strategy_name: function_calling
+        agent_strategy_provider_name: hjlarry/agent/mcp_agent
+        meta:
+          minimum_dify_version: null
+          version: 0.0.1
+        output_schema: {}
+        plugin_unique_identifier: hjlarry/agent:0.0.1@a49e68ba2d0ddafda481fdff7d65426fb43e4bcb3522e648475379996d7680dd
+        selected: false
+        title: Agent
+        tool_node_version: '2'
+        type: agent
+      height: 187
+      id: '1784798006126'
+      position:
+        x: 861.1642125770034
+        y: 150.5299868690768
+      positionAbsolute:
+        x: 861.1642125770034
+        y: 150.5299868690768
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        outputs:
+        - value_selector:
+          - '1784798006126'
+          - text
+          variable: answer
+        selected: false
+        title: 输出 2
+        type: end
+      height: 51
+      id: '1784798628632'
+      position:
+        x: 1162.1642125770034
+        y: 150.5299868690768
+      positionAbsolute:
+        x: 1162.1642125770034
+        y: 150.5299868690768
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    viewport:
+      x: -151.818033073332
+      y: 191.84157775677167
+      zoom: 0.5743491774985178
+  rag_pipeline_variables: []

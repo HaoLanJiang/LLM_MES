@@ -1,7 +1,3 @@
-using System.Text;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
-using VOL.Core.Configuration;
 using VOL.Core.Extensions;
 using VOL.McpApi.Tools;
 
@@ -38,37 +34,21 @@ builder.Services.AddModule(builder.Configuration);
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
 
-builder.Services
-    .AddAuthentication(options =>
-    {
-        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-    })
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidAudience = AppSetting.Secret.Audience,
-            ValidIssuer = AppSetting.Secret.Issuer,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(AppSetting.Secret.JWT))
-        };
-    });
-builder.Services.AddAuthorization();
-
 builder.Services.AddMcpServer()
-    .WithHttpTransport(options => options.Stateless = true)
-    .AddAuthorizationFilters()
-    .WithTools<ApsSchedulingTools>();
+    .WithHttpTransport(options =>
+    {
+        // Keep Streamable HTTP at /mcp for current clients, and expose
+        // /mcp/sse + /mcp/message for older MCP clients such as the
+        // Dify MCP FunctionCalling plugin.
+        options.Stateless = false;
+        options.EnableLegacySse = true;
+    })
+    .WithTools<ApsSchedulingTools>()
+    .WithTools<ApsMachineTools>();
 
 var app = builder.Build();
 
-app.UseAuthentication();
-app.UseAuthorization();
 app.UseStaticHttpContext();
 
-app.MapMcp("/mcp").RequireAuthorization();
+app.MapMcp("/mcp");
 app.Run();
