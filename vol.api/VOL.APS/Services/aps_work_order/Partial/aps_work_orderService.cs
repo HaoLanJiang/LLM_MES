@@ -141,9 +141,9 @@ namespace VOL.APS.Services
             string[] productNames = { "电机壳体", "控制面板", "传动轴", "连接支架", "精密齿轮" };
             string[] changeoverGroups = { "A组", "B组", "C组", "D组", "E组" };
             string[] scheduleStatuses =
-                {
-                "待排产",
-                //"排产中", "已排产","已完成"
+            {
+                ApsScheduleStatus.Pending.ToStorageValue(),
+                // ApsScheduleStatus.Scheduling.ToStorageValue(), ApsScheduleStatus.Scheduled.ToStorageValue(), ApsScheduleStatus.Completed.ToStorageValue()
             };
             string[] customerLevel = { "一级客户", "二级客户", "三级客户", "四级客户", "五级客户" };
 

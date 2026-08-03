@@ -1133,7 +1133,10 @@ namespace VOL.Core.WorkFlow
                     auditProperty.SetValue(entity, (int)AuditStatus.待审核);
                 }
                 //重新开始
-                var steps = workFlow.Sys_WorkFlowTableStep.Where(x => x.StepAttrType == StepType.node.ToString() && (x.AuditStatus >= 0)).ToList();
+                var steps = workFlow.Sys_WorkFlowTableStep
+                    .Where(x => x.StepAttrType == StepType.node.ToString()
+                        && x.AuditStatus >= (int)AuditStatus.待审核)
+                    .ToList();
                 if (steps.Count > 0)
                 {
                     foreach (var item in steps)

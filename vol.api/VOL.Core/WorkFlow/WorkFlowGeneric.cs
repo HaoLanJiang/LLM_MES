@@ -44,7 +44,10 @@ namespace VOL.Core.WorkFlow
             {
                 return [];
             }
-            var current = data.Sys_WorkFlowTableStep.Where(x => x.StepId == data.CurrentStepId && (x.AuditStatus == null || x.AuditStatus == 0)).ToList();
+            var current = data.Sys_WorkFlowTableStep
+                .Where(x => x.StepId == data.CurrentStepId
+                    && (x.AuditStatus == null || x.AuditStatus == (int)AuditStatus.待审核))
+                .ToList();
             return current;
         }
         /// <summary>

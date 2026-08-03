@@ -63,8 +63,8 @@ namespace VOL.APS.Services
 
             // 读取未来可用的排产时间片，后续会基于保留的排产结果重算占用分钟。
             List<ScheduleTimeSlotState> slotStates = _scheduleTimeRepository
-                .FindAsIQueryable(x => x.enable_flag == 1
-                    && x.status == 1
+                .FindAsIQueryable(x => x.enable_flag == (sbyte)ApsEnabledStatus.Enabled
+                    && x.status == (sbyte)ApsScheduleTimeStatus.Available
                     && x.available_minutes > 0
                     && x.end_datetime > startBoundary)
                 .OrderBy(x => x.schedule_date)
@@ -85,8 +85,9 @@ namespace VOL.APS.Services
             }
 
             // 查询待排产工单，排产前会先清空本次范围内的历史结果，因此这里只排除已完成工单。
+            string completedStatus = ApsScheduleStatus.Completed.ToStorageValue();
             IQueryable<Aps_Work_Order> workOrderQuery = _workOrderRepository
-                .FindAsIQueryable(x => x.ScheduleStatus != "已完成");
+                .FindAsIQueryable(x => x.ScheduleStatus != completedStatus);
 
             if (input.WorkOrderIds?.Count > 0)
             {
@@ -402,9 +403,11 @@ namespace VOL.APS.Services
                         CustomerPriority = selectedOrder.WorkOrder.CustomerPriority,
                         EarliestStartTime = selectedOrder.WorkOrder.EarliestStartTime,
                         LatestDeliveryDate = selectedOrder.WorkOrder.LatestDeliveryDate,
-                        IsDelay = (sbyte)(isDelay ? 1 : 0),
+                        IsDelay = isDelay
+                            ? (sbyte)ApsDelayStatus.Delayed
+                            : (sbyte)ApsDelayStatus.OnSchedule,
                         DelayMinutes = delayMinutes,
-                        ScheduleStatus = isDelay ? "已延期" : "已排产",
+                        ScheduleStatus = (isDelay ? ApsScheduleStatus.Delayed : ApsScheduleStatus.Scheduled).ToStorageValue(),
                         Remark = BuildResultRemark(sortMode, rules)
                     };
                     scheduleResult.SetCreateDefaultVal();
@@ -454,15 +457,15 @@ namespace VOL.APS.Services
                 decimal totalScheduledQty = orderState.ExistingScheduledQty + orderState.ScheduledQtyThisRun;
                 if (totalScheduledQty >= orderEntity.OrderQty - QuantityTolerance)
                 {
-                    orderEntity.ScheduleStatus = "已排产";
+                    orderEntity.ScheduleStatus = ApsScheduleStatus.Scheduled.ToStorageValue();
                 }
                 else if (totalScheduledQty > QuantityTolerance)
                 {
-                    orderEntity.ScheduleStatus = "排产中";
+                    orderEntity.ScheduleStatus = ApsScheduleStatus.Scheduling.ToStorageValue();
                 }
                 else
                 {
-                    orderEntity.ScheduleStatus = "待排产";
+                    orderEntity.ScheduleStatus = ApsScheduleStatus.Pending.ToStorageValue();
                 }
 
                 orderEntity.SetModifyDefaultVal();
@@ -716,9 +719,9 @@ namespace VOL.APS.Services
                 PlanEndTime = planEndTime,
                 PlanMinutes = Math.Max(1, (int)Math.Ceiling((planEndTime - planStartTime).TotalMinutes)),
                 OrderQty = 0m,
-                IsDelay = 0,
+                IsDelay = (sbyte)ApsDelayStatus.OnSchedule,
                 DelayMinutes = 0,
-                ScheduleStatus = "清厂",
+                ScheduleStatus = ApsScheduleStatus.Changeover.ToStorageValue(),
                 Remark = $"{BuildResultRemark(sortMode, rules)}; 清厂: {(currentGroup ?? string.Empty).Trim()} -> {(nextGroup ?? string.Empty).Trim()}"
             };
             changeoverResult.SetCreateDefaultVal();
@@ -750,7 +753,13 @@ namespace VOL.APS.Services
         private static bool IsInProductionStatus(string scheduleStatus)
         {
             string normalizedStatus = NormalizeKey(scheduleStatus);
-            return normalizedStatus is "生产中" or "开工中" or "已开工" or "加工中" or "执行中" or "在制";
+            return normalizedStatus is var status &&
+                   (status == ApsScheduleStatus.InProduction.ToStorageValue()
+                    || status == ApsScheduleStatus.WorkStarting.ToStorageValue()
+                    || status == ApsScheduleStatus.Started.ToStorageValue()
+                    || status == ApsScheduleStatus.Processing.ToStorageValue()
+                    || status == ApsScheduleStatus.Executing.ToStorageValue()
+                    || status == ApsScheduleStatus.WorkInProgress.ToStorageValue());
         }
 
         /// <summary>
@@ -1226,7 +1235,7 @@ namespace VOL.APS.Services
                 scheduledSegmentCount = results.Count,
                 totalPlannedMinutes = results.Sum(x => x.PlanMinutes),
                 totalPlannedQty = results.Where(x => x.WorkOrderId != Guid.Empty).Sum(x => x.OrderQty),
-                changeoverSegmentCount = results.Count(x => x.ScheduleStatus == "清厂"),
+                changeoverSegmentCount = results.Count(x => x.ScheduleStatus == ApsScheduleStatus.Changeover.ToStorageValue()),
                 affectedMachineCount = results.Select(x => x.MachineCode).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Count(),
                 affectedScheduleDayCount = results.Select(x => x.PlanStartTime.Date).Distinct().Count()
             };

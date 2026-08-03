@@ -75,8 +75,8 @@ namespace VOL.APS.Services
                 .OrderBy(x => x.Key)
                 .Select(group =>
                 {
-                    var activeGroup = group.Where(x => x.status == 1 && x.available_minutes > 0).ToList();
-                    var restGroup = group.Where(x => x.status != 1 || x.available_minutes <= 0).ToList();
+                    var activeGroup = group.Where(x => x.status == (sbyte)ApsScheduleTimeStatus.Available && x.available_minutes > 0).ToList();
+                    var restGroup = group.Where(x => x.status != (sbyte)ApsScheduleTimeStatus.Available || x.available_minutes <= 0).ToList();
                     int availableMinutes = group.Sum(x => x.available_minutes);
                     int usedMinutes = group.Sum(x => x.used_minutes);
                     int remainMinutes = group.Sum(x => x.remain_minutes);
@@ -95,7 +95,9 @@ namespace VOL.APS.Services
                         .Select(x => $"{x.start_datetime:HH:mm}-{x.end_datetime:HH:mm}")
                         .Distinct()
                         .ToList();
-                    int status = group.Any(x => x.status != 1) ? group.Max(x => (int)x.status) : 1;
+                    int status = group.Any(x => x.status != (sbyte)ApsScheduleTimeStatus.Available)
+                        ? group.Max(x => (int)x.status)
+                        : (int)ApsScheduleTimeStatus.Available;
 
                     return new ApsMachineScheduleCalendarOutputDto
                     {
@@ -158,7 +160,7 @@ namespace VOL.APS.Services
                     UsedMinutes = x.used_minutes,
                     RemainMinutes = x.remain_minutes,
                     Status = x.status,
-                    IsRest = x.status != 1 || x.available_minutes <= 0
+                    IsRest = x.status != (sbyte)ApsScheduleTimeStatus.Available || x.available_minutes <= 0
                 })
                 .ToList();
 
@@ -301,7 +303,9 @@ namespace VOL.APS.Services
                 entity.available_minutes = availableMinutes;
                 entity.used_minutes = item.IsRest ? 0 : entity.used_minutes;
                 entity.remain_minutes = item.IsRest ? 0 : Math.Max(availableMinutes - entity.used_minutes, 0);
-                entity.status = (sbyte)(item.IsRest ? 4 : 1);
+                entity.status = item.IsRest
+                    ? (sbyte)ApsScheduleTimeStatus.Rest
+                    : (sbyte)ApsScheduleTimeStatus.Available;
                 entity.update_time = now;
             }
 
@@ -345,7 +349,7 @@ namespace VOL.APS.Services
             List<Aps_Shift> shiftList = _repository.DbContext
                 .Set<Aps_Shift>()
                 .AsNoTracking()
-                .Where(x => x.enable_flag == 1)
+                .Where(x => x.enable_flag == (sbyte)ApsEnabledStatus.Enabled)
                 .OrderBy(x => x.shift_code)
                 .ToList();
 
@@ -391,7 +395,7 @@ namespace VOL.APS.Services
 
                         DateTime startDateTime = currentDate.Date.Add(shift.start_time);
                         DateTime endDateTime = currentDate.Date.Add(shift.end_time);
-                        if (shift.cross_day_flag == 1 || endDateTime <= startDateTime)
+                        if (shift.cross_day_flag == (sbyte)ApsCrossDayStatus.CrossDay || endDateTime <= startDateTime)
                         {
                             endDateTime = endDateTime.AddDays(1);
                         }
@@ -410,8 +414,8 @@ namespace VOL.APS.Services
                             available_minutes = shift.work_minutes,
                             used_minutes = 0,
                             remain_minutes = shift.work_minutes,
-                            status = 1,
-                            enable_flag = 1,
+                            status = (sbyte)ApsScheduleTimeStatus.Available,
+                            enable_flag = (sbyte)ApsEnabledStatus.Enabled,
                             remark = $"system generated on {now:yyyy-MM-dd HH:mm:ss}",
                             create_time = now,
                             update_time = now

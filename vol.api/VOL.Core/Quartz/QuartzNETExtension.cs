@@ -135,7 +135,7 @@ namespace VOL.Core.Quartz
 
                 await scheduler.ScheduleJob(job, trigger);
                 Console.WriteLine(taskOptions.Status);
-                if (taskOptions.Status == 0)
+                if (taskOptions.Status == (int)TriggerState.Normal)
                 {
                     Console.WriteLine("启动了：" + taskOptions.TaskName);
                     await scheduler.Start();

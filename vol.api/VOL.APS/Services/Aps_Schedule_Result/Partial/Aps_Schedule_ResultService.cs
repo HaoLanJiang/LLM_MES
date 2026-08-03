@@ -330,7 +330,9 @@ namespace VOL.APS.Services
                 return new WebResponseContent().Error("最早开始时间不能晚于最晚交付日期");
             }
 
-            if (entity.IsDelay != null && entity.IsDelay != 0 && entity.IsDelay != 1)
+            if (entity.IsDelay != null
+                && entity.IsDelay != (sbyte)ApsDelayStatus.OnSchedule
+                && entity.IsDelay != (sbyte)ApsDelayStatus.Delayed)
             {
                 return new WebResponseContent().Error("是否延期只能为0或1");
             }

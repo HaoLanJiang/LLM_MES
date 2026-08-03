@@ -250,7 +250,8 @@ namespace VOL.APS.Services
                 return new WebResponseContent().Error("班次名称不能为空");
             }
 
-            if (entity.shift_type != 0 && entity.shift_type != 1)
+            if (entity.shift_type != (sbyte)ApsShiftType.DayShift
+                && entity.shift_type != (sbyte)ApsShiftType.NightShift)
             {
                 return new WebResponseContent().Error("班次类型只能为0或1");
             }
@@ -265,7 +266,8 @@ namespace VOL.APS.Services
                 return new WebResponseContent().Error("结束时间不能为空");
             }
 
-            if (entity.cross_day_flag != 0 && entity.cross_day_flag != 1)
+            if (entity.cross_day_flag != (sbyte)ApsCrossDayStatus.SameDay
+                && entity.cross_day_flag != (sbyte)ApsCrossDayStatus.CrossDay)
             {
                 return new WebResponseContent().Error("是否跨天只能为0或1");
             }
@@ -275,7 +277,8 @@ namespace VOL.APS.Services
                 return new WebResponseContent().Error("工作分钟数必须大于0");
             }
 
-            if (entity.enable_flag != 0 && entity.enable_flag != 1)
+            if (entity.enable_flag != (sbyte)ApsEnabledStatus.Disabled
+                && entity.enable_flag != (sbyte)ApsEnabledStatus.Enabled)
             {
                 return new WebResponseContent().Error("是否启用只能为0或1");
             }
