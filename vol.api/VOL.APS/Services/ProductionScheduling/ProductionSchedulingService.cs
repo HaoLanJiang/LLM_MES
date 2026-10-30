@@ -51,6 +51,16 @@ namespace VOL.APS.Services
         /// <returns>返回排产执行结果及汇总数据。</returns>
         public WebResponseContent RunProductionScheduling(RunProductionSchedulingInputDto input)
         {
+            return ExecuteProductionScheduling(input, previewOnly: false);
+        }
+
+        public WebResponseContent PreviewProductionScheduling(RunProductionSchedulingInputDto input)
+        {
+            return ExecuteProductionScheduling(input, previewOnly: true);
+        }
+
+        private WebResponseContent ExecuteProductionScheduling(RunProductionSchedulingInputDto input, bool previewOnly)
+        {
             input ??= new RunProductionSchedulingInputDto();
 
             // 解析排序模式与规则顺序，并确定本次排产的起始时间边界。
@@ -60,13 +70,30 @@ namespace VOL.APS.Services
             // 只要前端明确选择了排产日期，就按该日期 00:00:00 起算；
             // 未传日期时，才从当前时间开始排，避免把“当天”误截成点击时刻。
             DateTime startBoundary = input.StartDate?.Date ?? now;
+            DateTime endBoundaryExclusive = input.EndDate?.Date.AddDays(1)
+                ?? (previewOnly ? startBoundary.Date.AddDays(14) : DateTime.MaxValue);
+            bool limitScheduleWindow = input.EndDate.HasValue || previewOnly;
+            if (endBoundaryExclusive <= startBoundary)
+            {
+                return new WebResponseContent().Error("排程结束日期必须晚于开始日期");
+            }
+            if (input.EndDate.HasValue && endBoundaryExclusive > startBoundary.Date.AddDays(90))
+            {
+                return new WebResponseContent().Error("排程预览范围不能超过90天");
+            }
 
             // 读取未来可用的排产时间片，后续会基于保留的排产结果重算占用分钟。
-            List<ScheduleTimeSlotState> slotStates = _scheduleTimeRepository
+            IQueryable<Aps_Schedule_Time> slotQuery = _scheduleTimeRepository
                 .FindAsIQueryable(x => x.enable_flag == (sbyte)ApsEnabledStatus.Enabled
                     && x.status == (sbyte)ApsScheduleTimeStatus.Available
                     && x.available_minutes > 0
-                    && x.end_datetime > startBoundary)
+                    && x.end_datetime > startBoundary);
+            if (limitScheduleWindow)
+            {
+                slotQuery = slotQuery.Where(x => x.start_datetime < endBoundaryExclusive);
+            }
+
+            List<ScheduleTimeSlotState> slotStates = slotQuery
                 .OrderBy(x => x.schedule_date)
                 .ThenBy(x => x.line_code)
                 .ThenBy(x => x.start_datetime)
@@ -119,9 +146,17 @@ namespace VOL.APS.Services
 
             HashSet<Guid> workOrderIds = workOrders.Select(x => x.Id).ToHashSet();
             bool clearAllExistingResults = input.WorkOrderIds == null || input.WorkOrderIds.Count == 0;
-            List<Aps_Schedule_Result> scheduleResultsToClear = (clearAllExistingResults
-                    ? _scheduleResultRepository.FindAsIQueryable(x => true)
-                    : _scheduleResultRepository.FindAsIQueryable(x => workOrderIds.Contains(x.WorkOrderId)))
+            IQueryable<Aps_Schedule_Result> clearResultsQuery = clearAllExistingResults
+                ? _scheduleResultRepository.FindAsIQueryable(x => x.PlanStartTime >= startBoundary
+                    && (workOrderIds.Contains(x.WorkOrderId)
+                        || (x.WorkOrderId == Guid.Empty && x.ScheduleStatus == ApsScheduleStatus.Changeover.ToStorageValue())))
+                : _scheduleResultRepository.FindAsIQueryable(x => workOrderIds.Contains(x.WorkOrderId)
+                    && x.PlanStartTime >= startBoundary);
+            if (limitScheduleWindow)
+            {
+                clearResultsQuery = clearResultsQuery.Where(x => x.PlanStartTime < endBoundaryExclusive);
+            }
+            List<Aps_Schedule_Result> scheduleResultsToClear = clearResultsQuery
                 .Where(x => !protectedWorkOrderIds.Contains(x.WorkOrderId))
                 .ToList();
             HashSet<Guid> scheduleResultIdsToClear = scheduleResultsToClear
@@ -142,12 +177,17 @@ namespace VOL.APS.Services
                 }
             }
 
-            List<MachineScheduleSnapshot> retainedMachineSchedules = _scheduleResultRepository
+            IQueryable<Aps_Schedule_Result> retainedScheduleQuery = _scheduleResultRepository
                 .FindAsIQueryable(x => x.MachineCode != null
                     && x.MachineCode != string.Empty
                     && !scheduleResultIdsToClear.Contains(x.Id)
                     && x.PlanEndTime > startBoundary
-                    && machineCodes.Contains(x.MachineCode))
+                    && machineCodes.Contains(x.MachineCode));
+            if (limitScheduleWindow)
+            {
+                retainedScheduleQuery = retainedScheduleQuery.Where(x => x.PlanStartTime < endBoundaryExclusive);
+            }
+            List<MachineScheduleSnapshot> retainedMachineSchedules = retainedScheduleQuery
                 .Select(x => new MachineScheduleSnapshot
                 {
                     MachineCode = x.MachineCode,
@@ -167,10 +207,8 @@ namespace VOL.APS.Services
                 {
                     MachineCode = (x.MachineCode ?? string.Empty).Trim(),
                     MachineName = (x.MachineName ?? string.Empty).Trim(),
-                    // 当前库里没有独立“每小时产能”字段，这里先按每日产能折算小时产能。
-                    HourlyCapacity = x.CapacityMinutesPerDay > 0
-                        ? decimal.Round(x.CapacityMinutesPerDay.Value / 24m, 4, MidpointRounding.AwayFromZero)
-                        : 0m
+                    // CapacityMinutesPerDay 是时间，不是件数。排程节拍使用工单的总加工分钟数计算。
+                    HourlyCapacity = 0m
                 })
                 .Where(x => !string.IsNullOrWhiteSpace(x.MachineCode))
                 .GroupBy(x => x.MachineCode, StringComparer.OrdinalIgnoreCase)
@@ -203,7 +241,7 @@ namespace VOL.APS.Services
             ApplyComprehensiveScores(orderStates);
 
             // 记录每台设备最近一次生产的换型组，供“同组连续生产优先”规则使用。
-            Dictionary<string, string> lastGroupByMachine = LoadLastGroupByMachine(scheduleResultIdsToClear);
+            Dictionary<string, string> lastGroupByMachine = LoadLastGroupByMachine(scheduleResultIdsToClear, startBoundary);
             List<Aps_Schedule_Result> addResults = new List<Aps_Schedule_Result>();
 
             // 逐个时间片为设备分配工单。
@@ -277,6 +315,7 @@ namespace VOL.APS.Services
                                 DateTime changeoverStartTime = cursor;
                                 DateTime changeoverEndTime = cursor.AddMinutes(preloadChangeoverMinutes);
                                 addResults.Add(BuildChangeoverResult(
+                                    futureSelectedOrder.WorkOrder.Id,
                                     machineCode,
                                     slotState.Entity.line_name,
                                     changeoverStartTime,
@@ -340,6 +379,7 @@ namespace VOL.APS.Services
                         DateTime changeoverStartTime = cursor;
                         DateTime changeoverEndTime = cursor.AddMinutes(changeoverMinutes);
                         addResults.Add(BuildChangeoverResult(
+                            selectedOrder.WorkOrder.Id,
                             machineCode,
                             slotState.Entity.line_name,
                             changeoverStartTime,
@@ -417,6 +457,7 @@ namespace VOL.APS.Services
                     selectedOrder.RemainingQty = ClampQuantity(selectedOrder.RemainingQty - plannedQty);
                     selectedOrder.ScheduledQtyThisRun += plannedQty;
                     slotState.Apply(plannedMinutes);
+                    slotState.SetCursorFloor(planEndTime);
                     AddOccupiedTimeRange(occupiedRanges, planStartTime, planEndTime);
 
                     string changeoverGroup = (selectedOrder.WorkOrder.ChangeoverGroup ?? string.Empty).Trim();
@@ -472,6 +513,16 @@ namespace VOL.APS.Services
             }
 
             // 在同一事务中统一提交排产结果、时间片占用和工单状态更新，避免数据不一致。
+            object summary = BuildSummary(sortMode, rules, addResults, workOrders.Count, orderStates);
+            if (previewOnly)
+            {
+                return new WebResponseContent().OK("排程预览已生成，未写入数据库", BuildPreview(
+                    summary,
+                    scheduleResultsToClear,
+                    addResults,
+                    workOrders));
+            }
+
             return _scheduleResultRepository.DbContextBeginTransaction(() =>
             {
                 if (scheduleResultsToClear.Count > 0)
@@ -494,7 +545,7 @@ namespace VOL.APS.Services
                 string message = addResults.Count > 0
                     ? "排产完成"
                     : "已清空可重排的旧排产结果，但本次未找到满足条件的可排产产能";
-                return new WebResponseContent().OK(message, BuildSummary(sortMode, rules, addResults, workOrders.Count, orderStates));
+                return new WebResponseContent().OK(message, summary);
             });
         }
 
@@ -502,13 +553,14 @@ namespace VOL.APS.Services
         /// 读取每台设备最近一次排产对应的换型组。
         /// </summary>
         /// <returns>设备编码与最近一次换型组的映射。</returns>
-        private Dictionary<string, string> LoadLastGroupByMachine(HashSet<Guid> excludedScheduleResultIds)
+        private Dictionary<string, string> LoadLastGroupByMachine(HashSet<Guid> excludedScheduleResultIds, DateTime startBoundary)
         {
             // 先按排产结束时间倒序查询，再为每台设备保留最近一条记录。
             List<MachineGroupSnapshot> snapshots = (from result in _scheduleResultRepository.FindAsIQueryable(x => !string.IsNullOrWhiteSpace(x.MachineCode))
                                                     join workOrder in _workOrderRepository.FindAsIQueryable(x => true)
                                                         on result.WorkOrderId equals workOrder.Id
                                                     where !excludedScheduleResultIds.Contains(result.Id)
+                                                        && result.PlanEndTime <= startBoundary
                                                     orderby result.PlanEndTime descending
                                                     select new MachineGroupSnapshot
                                                     {
@@ -612,11 +664,6 @@ namespace VOL.APS.Services
         /// </summary>
         private static decimal GetProductionQtyPerMinute(Aps_Work_Order workOrder, MachineCapacitySnapshot? machineCapacity)
         {
-            if (machineCapacity != null && machineCapacity.HourlyCapacity > 0)
-            {
-                return machineCapacity.HourlyCapacity / 60m;
-            }
-
             if (workOrder.ProcessMinutes > 0 && workOrder.OrderQty > 0)
             {
                 return workOrder.OrderQty / workOrder.ProcessMinutes;
@@ -699,6 +746,7 @@ namespace VOL.APS.Services
         /// 构造清厂排产结果。
         /// </summary>
         private static Aps_Schedule_Result BuildChangeoverResult(
+            Guid relatedWorkOrderId,
             string machineCode,
             string machineName,
             DateTime planStartTime,
@@ -711,7 +759,7 @@ namespace VOL.APS.Services
             Aps_Schedule_Result changeoverResult = new Aps_Schedule_Result
             {
                 Id = Guid.NewGuid(),
-                WorkOrderId = Guid.Empty,
+                WorkOrderId = relatedWorkOrderId,
                 WorkOrderNo = "清厂",
                 MachineCode = machineCode,
                 MachineName = machineName,
@@ -1241,6 +1289,59 @@ namespace VOL.APS.Services
             };
         }
 
+        private static object BuildPreview(
+            object summary,
+            List<Aps_Schedule_Result> previousResults,
+            List<Aps_Schedule_Result> proposedResults,
+            List<Aps_Work_Order> workOrders)
+        {
+            int beforeDelayedOrders = previousResults
+                .Where(x => x.WorkOrderId != Guid.Empty && x.IsDelay == (sbyte)ApsDelayStatus.Delayed)
+                .Select(x => x.WorkOrderId)
+                .Distinct()
+                .Count();
+            int afterDelayedOrders = proposedResults
+                .Where(x => x.WorkOrderId != Guid.Empty && x.IsDelay == (sbyte)ApsDelayStatus.Delayed)
+                .Select(x => x.WorkOrderId)
+                .Distinct()
+                .Count();
+            int beforeChangeovers = previousResults.Count(x => x.ScheduleStatus == ApsScheduleStatus.Changeover.ToStorageValue());
+            int afterChangeovers = proposedResults.Count(x => x.ScheduleStatus == ApsScheduleStatus.Changeover.ToStorageValue());
+
+            return new
+            {
+                summary,
+                impact = new
+                {
+                    replannedWorkOrderCount = workOrders.Count,
+                    beforeDelayedOrderCount = beforeDelayedOrders,
+                    afterDelayedOrderCount = afterDelayedOrders,
+                    beforeChangeoverCount = beforeChangeovers,
+                    afterChangeoverCount = afterChangeovers,
+                    changeoverDelta = afterChangeovers - beforeChangeovers
+                },
+                segments = proposedResults
+                    .OrderBy(x => x.PlanStartTime)
+                    .ThenBy(x => x.MachineCode)
+                    .Select(x => new
+                    {
+                        x.WorkOrderId,
+                        x.WorkOrderNo,
+                        x.MachineCode,
+                        x.MachineName,
+                        x.PlanStartTime,
+                        x.PlanEndTime,
+                        x.PlanMinutes,
+                        x.OrderQty,
+                        x.ScheduleStatus,
+                        x.IsDelay,
+                        x.DelayMinutes,
+                        x.Remark
+                    })
+                    .ToList()
+            };
+        }
+
         /// <summary>
         /// 获取规则的中文展示名称。
         /// </summary>
@@ -1315,7 +1416,7 @@ namespace VOL.APS.Services
             /// </summary>
             public DateTime GetCursor(DateTime startBoundary)
             {
-                DateTime cursor = Entity.start_datetime.AddMinutes(Entity.used_minutes + PlannedMinutes);
+                DateTime cursor = Entity.start_datetime;
                 if (CursorFloor.HasValue && CursorFloor.Value > cursor)
                 {
                     cursor = CursorFloor.Value;

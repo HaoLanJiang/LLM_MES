@@ -228,6 +228,10 @@ let viewgird = [
         name: 'ProductionEquipmentManagement',
         component: () => import('@/views/aps/ProductionEquipmentManagement.vue')
     },{
+        path: '/AiProductionScheduling',
+        name: 'AiProductionScheduling',
+        component: () => import('@/views/aps/AiProductionScheduling.vue')
+    },{
         path: '/Gannt',
         name: 'Gannt',
         component: () => import('@/views/aps/Gannt.vue')
@@ -235,3 +239,4 @@ let viewgird = [
 
 //上面的demo、MES开头的都是示例菜单，可以任意删除 
 export default viewgird
+

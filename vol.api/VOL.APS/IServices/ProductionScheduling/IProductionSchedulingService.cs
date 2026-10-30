@@ -11,5 +11,8 @@ namespace VOL.APS.IServices
         /// <param name="input">排产参数，包含排序模式、规则顺序、开始日期以及指定工单范围。</param>
         /// <returns>返回排产执行结果及统计信息。</returns>
         WebResponseContent RunProductionScheduling(RunProductionSchedulingInputDto input);
+
+        /// <summary>只计算排程草案和影响指标，不写入数据库。</summary>
+        WebResponseContent PreviewProductionScheduling(RunProductionSchedulingInputDto input);
     }
 }

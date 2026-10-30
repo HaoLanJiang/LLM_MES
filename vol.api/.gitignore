@@ -1,0 +1,39 @@
+# .NET build output
+**/bin/
+**/obj/
+**/[Dd][Ee][Bb][Uu][Gg]/
+**/[Dd][Ee][Bb][Uu][Gg]
+**/[Dd][Ee][Bb][Uu][Gg].*
+**/*.[Dd][Ee][Bb][Uu][Gg]
+**/[Rr]elease/
+**/x64/
+**/x86/
+**/TestResults/
+**/artifacts/
+**/publish/
+/packages/
+*.pdb
+*.mdb
+*.ilk
+*.dbg
+*.dmp
+
+# Visual Studio and IDE user state
+.vs/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.slnLaunch.user
+
+# Logs and local coverage output
+*.log
+coverage/
+coverage.*
+
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
+

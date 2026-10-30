@@ -38,6 +38,7 @@
                 <div class="table-header">
                     <div class="card-title">排产结果列表</div>
                     <div class="table-actions">
+                        <el-button type="primary" plain @click="openAiScheduling">AI 排程助手</el-button>
                         <el-button type="primary" @click="openAddDialog">新增</el-button>
                         <el-button type="success" @click="openSchedulingDialog">排产</el-button>
                         <el-button type="danger" @click="handleDelete">删除</el-button>
@@ -260,8 +261,10 @@
 
 <script setup>
 import { getCurrentInstance, nextTick, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 const { proxy } = getCurrentInstance()
+const router = useRouter()
 
 const loading = ref(false)
 const submitLoading = ref(false)
@@ -321,6 +324,8 @@ const createSchedulingForm = () => ({
 })
 
 const schedulingForm = reactive(createSchedulingForm())
+
+const openAiScheduling = () => router.push({ name: 'AiProductionScheduling' })
 
 const formRules = {
     WorkOrderId: [{ required: true, message: '请输入工单ID', trigger: 'blur' }],
@@ -643,3 +648,4 @@ onMounted(() => {
     margin-bottom: -18px;
 }
 </style>
+

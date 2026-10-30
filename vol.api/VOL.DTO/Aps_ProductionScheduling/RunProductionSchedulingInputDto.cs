@@ -11,6 +11,9 @@ namespace VOL.DTO.Aps_ProductionScheduling
 
         public DateTime? StartDate { get; set; }
 
+        /// <summary>排程窗口结束日期（含当天）；预览默认只看 14 天。</summary>
+        public DateTime? EndDate { get; set; }
+
         public List<Guid> WorkOrderIds { get; set; } = new();
     }
 }
