@@ -4,7 +4,7 @@
             <div>
                 <div class="eyebrow"><el-icon><MagicStick /></el-icon> AI + APS</div>
                 <h1>AI 排程助手</h1>
-                <p>用自然语言描述目标，确认工单和优先规则，再生成可检查的排程草案。</p>
+                <p>一句话提出目标，AI 自动识别工单并生成方案；需要时再调整细节。</p>
             </div>
             <el-tag class="readonly-tag" effect="dark" round>只读预览 · 不写入排程结果</el-tag>
         </section>
@@ -14,8 +14,8 @@
                 <el-card shadow="never" class="input-card">
                     <template #header>
                         <div class="section-heading">
-                            <span class="step-number">1</span>
-                            <div><strong>描述排程要求</strong><small>AI 提取范围和规则，工单由系统实际查询</small></div>
+                            
+                            <div><strong>排程目标</strong><small>一句话说明工单、时间范围和优先目标</small></div>
                         </div>
                     </template>
 
@@ -27,23 +27,20 @@
                         show-word-limit
                         resize="vertical"
                         placeholder="例如：把工单 WO-20261029-001 从明天开始排，优先交期，尽量减少清厂"
-                        @keyup.ctrl.enter="interpretRequest" />
+                        @keyup.ctrl.enter="generateSchedule" />
                     <div class="example-row">
                         <span>试试：</span>
                         <el-button link type="primary" @click="applyExample">指定工单并优先交期</el-button>
                     </div>
-                    <el-button type="primary" :loading="interpretLoading" :disabled="!requestText.trim()" class="full-button" @click="interpretRequest">
-                        <el-icon><MagicStick /></el-icon>解析要求
+                    <el-button type="primary" :loading="interpretLoading || previewLoading" :disabled="!requestText.trim()" class="full-button" @click="generateSchedule">
+                        <el-icon><MagicStick /></el-icon>AI 生成排程方案
                     </el-button>
                     <el-alert v-if="interpretMessage" :title="interpretMessage" :type="interpretStatus" :closable="false" show-icon class="status-alert" />
 
                     <el-divider />
 
-                    <div class="section-heading subsection-heading">
-                        <span class="step-number muted">2</span>
-                        <div><strong>确认排程范围</strong><small>可修改识别结果；工单留空表示按日期预览所有符合条件的工单</small></div>
-                    </div>
-
+                    <el-collapse v-model="advancedOpen" class="advanced-collapse">
+                        <el-collapse-item name="params" title="调整范围和排程参数">
                     <el-form :model="form" label-position="top" class="schedule-form">
                         <el-form-item label="工单范围">
                             <el-select v-model="form.workOrderIds" multiple filterable clearable collapse-tags collapse-tags-tooltip placeholder="解析后选择工单；留空表示全部符合条件的工单" style="width: 100%">
@@ -80,11 +77,10 @@
                         </el-form-item>
                         <el-alert v-else title="综合评分模式沿用当前排程引擎的评分规则。" type="info" :closable="false" show-icon />
                     </el-form>
-
-                    <el-button type="success" :loading="previewLoading" class="full-button preview-button" @click="previewSchedule">
-                        <el-icon><DataAnalysis /></el-icon>生成排程预览
-                    </el-button>
-                    <p class="privacy-note">预览只在服务端临时计算，不会保存或覆盖现有排程。</p>
+                    <el-button link type="primary" :loading="previewLoading" @click="previewSchedule">仅按当前参数重新预览</el-button>
+                </el-collapse-item>
+                    </el-collapse>
+                    <p class="privacy-note">默认流程无需逐项确认参数；AI 解析结果可以在上方展开调整。</p>
                 </el-card>
             </el-col>
 
@@ -92,15 +88,15 @@
                 <el-card shadow="never" class="preview-card">
                     <template #header>
                         <div class="section-heading">
-                            <span class="step-number">3</span>
-                            <div><strong>检查排程草案</strong><small>对比影响指标并查看设备上的排程片段</small></div>
+                            
+                            <div><strong>方案预览</strong><small>延期、清厂变化和设备排程片段集中呈现</small></div>
                         </div>
                     </template>
 
                     <div v-if="!previewData && !previewMessage" class="empty-state">
                         <div class="empty-icon"><el-icon><DataAnalysis /></el-icon></div>
                         <strong>排程草案会显示在这里</strong>
-                        <p>解析要求并确认范围后，点击“生成排程预览”。</p>
+                        <p>输入排程目标后，点击“AI 生成排程方案”。</p>
                     </div>
                     <el-alert v-if="previewMessage" :title="previewMessage" :type="previewStatus" :closable="false" show-icon class="preview-alert" />
 
@@ -175,6 +171,7 @@ const endDate = new Date(today)
 endDate.setDate(endDate.getDate() + 13)
 
 const requestText = ref('')
+const advancedOpen = ref([])
 const interpretLoading = ref(false)
 const previewLoading = ref(false)
 const interpretMessage = ref('')
@@ -239,13 +236,21 @@ async function interpretRequest() {
         form.workOrderIds = getField(input, 'workOrderIds', 'WorkOrderIds') || []
         previewData.value = null
         interpretStatus.value = 'success'
-        interpretMessage.value = (result.message || '解析完成') + '：匹配到 ' + orders.length + ' 张工单，请确认后再生成预览。'
+        interpretMessage.value = 'AI 已匹配 ' + orders.length + ' 张工单，正在计算方案。'
     } catch (error) {
         interpretStatus.value = 'error'
         interpretMessage.value = error?.message || error?.data?.message || '解析失败，请检查 AI 服务配置和网络连接。'
     } finally {
         interpretLoading.value = false
     }
+}
+
+async function generateSchedule() {
+    if (!requestText.value.trim()) return
+    previewMessage.value = ''
+    await interpretRequest()
+    if (interpretStatus.value !== 'success') return
+    await previewSchedule()
 }
 
 async function previewSchedule() {
@@ -371,3 +376,7 @@ async function previewSchedule() {
     .hero h1 { font-size: 21px; }
 }
 </style>
+
+
+
+

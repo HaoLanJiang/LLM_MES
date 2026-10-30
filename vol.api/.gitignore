@@ -1,6 +1,6 @@
 # .NET build output
-**/bin/
-**/obj/
+**/[Bb][Ii][Nn]/
+**/[Oo][Bb][Jj]/
 **/[Dd][Ee][Bb][Uu][Gg]/
 **/[Dd][Ee][Bb][Uu][Gg]
 **/[Dd][Ee][Bb][Uu][Gg].*
